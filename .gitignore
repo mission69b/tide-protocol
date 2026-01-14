@@ -1,0 +1,12 @@
+node_modules
+.next
+.env*
+/.turbo
+/.vercel
+/dist
+coverage
+.DS_Store
+build/
+move
+contracts/core/build/
+contracts/adapters/faith_router/build/

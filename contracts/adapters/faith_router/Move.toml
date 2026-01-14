@@ -1,0 +1,12 @@
+[package]
+name = "faith_router"
+edition = "2024"
+version = "0.0.1"
+published-at = "0x0"
+
+[dependencies]
+tide_core = { local = "../../core" }
+
+[addresses]
+faith_router = "0x0"
+tide_core = "0x0"

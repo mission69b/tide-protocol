@@ -1,0 +1,11 @@
+[package]
+name = "tide_core"
+edition = "2024"
+version = "0.0.1"
+published-at = "0x0"
+
+[dependencies]
+# Sui, Bridge, MoveStdlib, and SuiSystem are implicitly imported (Sui 1.45+)
+
+[addresses]
+tide_core = "0x0"
