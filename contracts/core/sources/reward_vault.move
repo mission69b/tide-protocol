@@ -233,7 +233,7 @@ public fun set_total_shares_for_testing(self: &mut RewardVault, shares: u128) {
 public fun destroy_with_balance_for_testing(vault: RewardVault) {
     let RewardVault { id, balance, .. } = vault;
     id.delete();
-    sui::test_utils::destroy(balance);
+    std::unit_test::destroy(balance);
 }
 
 // === Unit Tests ===
@@ -260,9 +260,6 @@ fun test_new_vault() {
 
 #[test]
 fun test_deposit_rewards_updates_index() {
-    use sui::coin;
-    use sui::sui::SUI;
-    
     let mut ctx = tx_context::dummy();
     let listing_id = object::id_from_address(@0x1);
     
@@ -288,9 +285,6 @@ fun test_deposit_rewards_updates_index() {
 
 #[test]
 fun test_index_monotonically_increases() {
-    use sui::coin;
-    use sui::sui::SUI;
-    
     let mut ctx = tx_context::dummy();
     let listing_id = object::id_from_address(@0x1);
     
@@ -319,9 +313,6 @@ fun test_index_monotonically_increases() {
 
 #[test]
 fun test_calculate_claimable() {
-    use sui::coin;
-    use sui::sui::SUI;
-    
     let mut ctx = tx_context::dummy();
     let listing_id = object::id_from_address(@0x1);
     
@@ -353,9 +344,6 @@ fun test_calculate_claimable() {
 #[test]
 #[expected_failure(abort_code = ENOT_AUTHORIZED)]
 fun test_deposit_wrong_cap() {
-    use sui::coin;
-    use sui::sui::SUI;
-    
     let mut ctx = tx_context::dummy();
     let listing_id = object::id_from_address(@0x1);
     let other_listing_id = object::id_from_address(@0x2);

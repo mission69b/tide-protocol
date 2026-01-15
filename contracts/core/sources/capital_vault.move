@@ -542,6 +542,9 @@ public fun new_with_deferred_for_testing(
 // === Unit Tests ===
 
 #[test_only]
+use sui::clock;
+
+#[test_only]
 const EBELOW_MINIMUM: u64 = 14;
 #[test_only]
 const ETRANCHE_NOT_READY: u64 = 6;
@@ -568,9 +571,6 @@ fun test_new_vault() {
 
 #[test]
 fun test_accept_deposit() {
-    use sui::coin;
-    use sui::sui::SUI;
-    
     let mut ctx = tx_context::dummy();
     let listing_id = object::id_from_address(@0x1);
     let issuer = @0xCAFE;
@@ -591,9 +591,6 @@ fun test_accept_deposit() {
 
 #[test]
 fun test_multiple_deposits_proportional_shares() {
-    use sui::coin;
-    use sui::sui::SUI;
-    
     let mut ctx = tx_context::dummy();
     let listing_id = object::id_from_address(@0x1);
     
@@ -620,9 +617,6 @@ fun test_multiple_deposits_proportional_shares() {
 #[test]
 #[expected_failure(abort_code = EBELOW_MINIMUM)]
 fun test_deposit_below_minimum() {
-    use sui::coin;
-    use sui::sui::SUI;
-    
     let mut ctx = tx_context::dummy();
     let listing_id = object::id_from_address(@0x1);
     
@@ -638,10 +632,6 @@ fun test_deposit_below_minimum() {
 
 #[test]
 fun test_finalize_schedule() {
-    use sui::coin;
-    use sui::sui::SUI;
-    use sui::clock;
-    
     let mut ctx = tx_context::dummy();
     let listing_id = object::id_from_address(@0x1);
     
@@ -669,10 +659,6 @@ fun test_finalize_schedule() {
 
 #[test]
 fun test_tranche_release() {
-    use sui::coin;
-    use sui::sui::SUI;
-    use sui::clock;
-    
     let mut ctx = tx_context::dummy();
     let listing_id = object::id_from_address(@0x1);
     let treasury = @0xFEE;
@@ -683,7 +669,7 @@ fun test_tranche_release() {
     let deposit = coin::mint_for_testing<SUI>(100_000_000_000, &mut ctx);
     let _shares = vault.accept_deposit(deposit);
     
-    let mut clock = clock::create_for_testing(&mut ctx);
+    let clock = clock::create_for_testing(&mut ctx);
     vault.finalize_schedule(&clock);
     
     // Must collect raise fee before releasing tranches
@@ -712,10 +698,6 @@ fun test_tranche_release() {
 #[test]
 #[expected_failure(abort_code = ETRANCHE_NOT_READY)]
 fun test_cannot_release_before_time() {
-    use sui::coin;
-    use sui::sui::SUI;
-    use sui::clock;
-    
     let mut ctx = tx_context::dummy();
     let listing_id = object::id_from_address(@0x1);
     let treasury = @0xFEE;
@@ -743,10 +725,6 @@ fun test_cannot_release_before_time() {
 
 #[test]
 fun test_raise_fee_collection() {
-    use sui::coin;
-    use sui::sui::SUI;
-    use sui::clock;
-    
     let mut ctx = tx_context::dummy();
     let listing_id = object::id_from_address(@0x1);
     let treasury = @0xFEE;
@@ -776,10 +754,6 @@ fun test_raise_fee_collection() {
 #[test]
 #[expected_failure(abort_code = EALREADY_RELEASED)]
 fun test_cannot_collect_fee_twice() {
-    use sui::coin;
-    use sui::sui::SUI;
-    use sui::clock;
-    
     let mut ctx = tx_context::dummy();
     let listing_id = object::id_from_address(@0x1);
     let treasury = @0xFEE;
