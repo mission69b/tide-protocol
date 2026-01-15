@@ -1,7 +1,101 @@
 /// Standardized events for Tide Core.
+/// 
+/// All events are designed to be:
+/// - Sufficient for off-chain indexing and dashboards
+/// - Reproducible by independent indexers
+/// - Complete for audit trails
+/// 
+/// Normative: Any dashboard or reporting surface representing Tide data
+/// MUST be reproducible by an independent indexer using only on-chain events.
 module tide_core::events;
 
 use sui::event::emit;
+
+// === Listing Lifecycle Events ===
+
+/// Emitted when a new listing is created.
+public struct ListingCreated has copy, drop {
+    listing_id: ID,
+    listing_number: u64,
+    issuer: address,
+    config_hash: vector<u8>,
+    min_deposit: u64,
+    raise_fee_bps: u64,
+    staking_backer_bps: u64,
+}
+
+public fun emit_listing_created(
+    listing_id: ID,
+    listing_number: u64,
+    issuer: address,
+    config_hash: vector<u8>,
+    min_deposit: u64,
+    raise_fee_bps: u64,
+    staking_backer_bps: u64,
+) {
+    emit(ListingCreated { 
+        listing_id, 
+        listing_number, 
+        issuer, 
+        config_hash, 
+        min_deposit,
+        raise_fee_bps,
+        staking_backer_bps,
+    });
+}
+
+/// Emitted when a listing is activated (starts accepting deposits).
+public struct ListingActivated has copy, drop {
+    listing_id: ID,
+    activation_time: u64,
+}
+
+public fun emit_listing_activated(listing_id: ID, activation_time: u64) {
+    emit(ListingActivated { listing_id, activation_time });
+}
+
+/// Emitted when a listing is finalized and release schedule is locked.
+public struct ListingFinalized has copy, drop {
+    listing_id: ID,
+    finalization_time: u64,
+    total_raised: u64,
+    total_backers: u64,
+    total_shares: u128,
+    num_tranches: u64,
+}
+
+public fun emit_listing_finalized(
+    listing_id: ID,
+    finalization_time: u64,
+    total_raised: u64,
+    total_backers: u64,
+    total_shares: u128,
+    num_tranches: u64,
+) {
+    emit(ListingFinalized { 
+        listing_id, 
+        finalization_time, 
+        total_raised, 
+        total_backers,
+        total_shares,
+        num_tranches,
+    });
+}
+
+/// Emitted when a listing is completed (all tranches released).
+public struct ListingCompleted has copy, drop {
+    listing_id: ID,
+    total_released: u64,
+    total_distributed_rewards: u64,
+}
+
+public fun emit_listing_completed(
+    listing_id: ID,
+    total_released: u64,
+    total_distributed_rewards: u64,
+) {
+    emit(ListingCompleted { listing_id, total_released, total_distributed_rewards });
+}
 
 // === Deposit Events ===
 
@@ -12,6 +106,12 @@ public struct Deposited has copy, drop {
     amount: u64,
     shares: u128,
     pass_id: ID,
+    /// Running total of deposits for the listing
+    total_raised: u64,
+    /// Total number of SupporterPasses minted
+    total_passes: u64,
+    /// Epoch when deposit occurred
+    epoch: u64,
 }
 
 public fun emit_deposited(
@@ -20,8 +120,11 @@ public fun emit_deposited(
     amount: u64,
     shares: u128,
     pass_id: ID,
+    total_raised: u64,
+    total_passes: u64,
+    epoch: u64,
 ) {
-    emit(Deposited { listing_id, backer, amount, shares, pass_id });
+    emit(Deposited { listing_id, backer, amount, shares, pass_id, total_raised, total_passes, epoch });
 }
 
 // === Claim Events ===
@@ -32,6 +135,14 @@ public struct Claimed has copy, drop {
     pass_id: ID,
     backer: address,
     amount: u64,
+    /// Backer's shares (for verification)
+    shares: u128,
+    /// The claim index before this claim
+    old_claim_index: u128,
+    /// The claim index after this claim
+    new_claim_index: u128,
+    /// Epoch when claim occurred
+    epoch: u64,
 }
 
 public fun emit_claimed(
@@ -39,8 +150,12 @@ public fun emit_claimed(
     pass_id: ID,
     backer: address,
     amount: u64,
+    shares: u128,
+    old_claim_index: u128,
+    new_claim_index: u128,
+    epoch: u64,
 ) {
-    emit(Claimed { listing_id, pass_id, backer, amount });
+    emit(Claimed { listing_id, pass_id, backer, amount, shares, old_claim_index, new_claim_index, epoch });
 }
 
 // === Release Events ===
@@ -51,6 +166,14 @@ public struct TrancheReleased has copy, drop {
     tranche_idx: u64,
     amount: u64,
     recipient: address,
+    /// Total tranches in the schedule
+    total_tranches: u64,
+    /// Remaining tranches after this release
+    remaining_tranches: u64,
+    /// Cumulative amount released to issuer
+    cumulative_released: u64,
+    /// Timestamp when released
+    release_time: u64,
 }
 
 public fun emit_tranche_released(
@@ -58,8 +181,21 @@ public fun emit_tranche_released(
     tranche_idx: u64,
     amount: u64,
     recipient: address,
+    total_tranches: u64,
+    remaining_tranches: u64,
+    cumulative_released: u64,
+    release_time: u64,
 ) {
-    emit(TrancheReleased { listing_id, tranche_idx, amount, recipient });
+    emit(TrancheReleased { 
+        listing_id, 
+        tranche_idx, 
+        amount, 
+        recipient, 
+        total_tranches,
+        remaining_tranches,
+        cumulative_released,
+        release_time,
+    });
 }
 
 // === Revenue Events ===
@@ -69,14 +205,20 @@ public struct RouteIn has copy, drop {
     listing_id: ID,
     source: address,
     amount: u64,
+    /// Cumulative rewards distributed through this vault
+    cumulative_distributed: u64,
+    /// New global reward index after this deposit
+    new_global_index: u128,
 }
 
 public fun emit_route_in(
     listing_id: ID,
     source: address,
     amount: u64,
+    cumulative_distributed: u64,
+    new_global_index: u128,
 ) {
-    emit(RouteIn { listing_id, source, amount });
+    emit(RouteIn { listing_id, source, amount, cumulative_distributed, new_global_index });
 }
 
 /// Emitted when the reward index is updated.
@@ -101,24 +243,54 @@ public struct Staked has copy, drop {
     listing_id: ID,
     amount: u64,
     validator: address,
+    /// Total staked amount after this operation
+    total_staked: u64,
 }
 
 public fun emit_staked(
     listing_id: ID,
     amount: u64,
     validator: address,
+    total_staked: u64,
 ) {
-    emit(Staked { listing_id, amount, validator });
+    emit(Staked { listing_id, amount, validator, total_staked });
 }
 
 /// Emitted when capital is unstaked.
 public struct Unstaked has copy, drop {
     listing_id: ID,
     amount: u64,
+    /// Total staked amount after this operation
+    total_staked: u64,
 }
 
-public fun emit_unstaked(listing_id: ID, amount: u64) {
-    emit(Unstaked { listing_id, amount });
+public fun emit_unstaked(listing_id: ID, amount: u64, total_staked: u64) {
+    emit(Unstaked { listing_id, amount, total_staked });
+}
+
+/// Emitted when staking rewards are harvested.
+public struct StakingRewardsHarvested has copy, drop {
+    listing_id: ID,
+    gross_rewards: u64,
+    backer_rewards: u64,
+    treasury_rewards: u64,
+    new_reward_index: u128,
+}
+
+public fun emit_staking_rewards_harvested(
+    listing_id: ID,
+    gross_rewards: u64,
+    backer_rewards: u64,
+    treasury_rewards: u64,
+    new_reward_index: u128,
+) {
+    emit(StakingRewardsHarvested { 
+        listing_id, 
+        gross_rewards, 
+        backer_rewards, 
+        treasury_rewards, 
+        new_reward_index,
+    });
 }
 
 // === Lifecycle Events ===
@@ -209,4 +381,69 @@ public fun emit_staking_reward_split(
     backer_bps: u64,
 ) {
     emit(StakingRewardSplit { listing_id, total_rewards, backer_amount, treasury_amount, backer_bps });
+}
+
+// === Schedule Events ===
+
+/// Emitted when the deterministic release schedule is finalized.
+public struct ScheduleFinalized has copy, drop {
+    listing_id: ID,
+    finalization_time: u64,
+    total_principal: u64,
+    initial_tranche_amount: u64,
+    monthly_tranche_amount: u64,
+    num_monthly_tranches: u64,
+    first_monthly_release_time: u64,
+    final_release_time: u64,
+}
+
+public fun emit_schedule_finalized(
+    listing_id: ID,
+    finalization_time: u64,
+    total_principal: u64,
+    initial_tranche_amount: u64,
+    monthly_tranche_amount: u64,
+    num_monthly_tranches: u64,
+    first_monthly_release_time: u64,
+    final_release_time: u64,
+) {
+    emit(ScheduleFinalized { 
+        listing_id, 
+        finalization_time, 
+        total_principal,
+        initial_tranche_amount,
+        monthly_tranche_amount,
+        num_monthly_tranches,
+        first_monthly_release_time,
+        final_release_time,
+    });
+}
+
+// === Treasury Events ===
+
+/// Emitted when treasury address is updated.
+public struct TreasuryUpdated has copy, drop {
+    old_treasury: address,
+    new_treasury: address,
+}
+
+public fun emit_treasury_updated(old_treasury: address, new_treasury: address) {
+    emit(TreasuryUpdated { old_treasury, new_treasury });
+}
+
+/// Emitted when fees are sent to treasury.
+public struct TreasuryPayment has copy, drop {
+    listing_id: ID,
+    payment_type: u8, // 0 = raise fee, 1 = staking split
+    amount: u64,
+    treasury: address,
+}
+
+public fun emit_treasury_payment(
+    listing_id: ID,
+    payment_type: u8,
+    amount: u64,
+    treasury: address,
+) {
+    emit(TreasuryPayment { listing_id, payment_type, amount, treasury });
 }

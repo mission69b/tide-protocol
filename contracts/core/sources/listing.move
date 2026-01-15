@@ -294,6 +294,9 @@ public fun deposit(
         amount,
         shares,
         pass.id(),
+        capital_vault.total_principal(), // Running total from vault
+        self.total_backers,
+        ctx.epoch(),
     );
     
     pass
@@ -318,8 +321,12 @@ public fun claim(
     
     assert!(claimable > 0, errors::nothing_to_claim());
     
+    // Capture old index for event
+    let old_claim_index = pass.claim_index();
+    let new_claim_index = reward_vault.global_index();
+    
     // Update pass cursor before withdrawal
-    pass.update_claim_index(reward_vault.global_index());
+    pass.update_claim_index(new_claim_index);
     
     // Withdraw from vault
     let coin = reward_vault.withdraw(claimable, ctx);
@@ -329,6 +336,10 @@ public fun claim(
         pass.id(),
         ctx.sender(),
         claimable,
+        pass.shares(),
+        old_claim_index,
+        new_claim_index,
+        ctx.epoch(),
     );
     
     coin
@@ -378,11 +389,18 @@ public fun release_tranche_at(
     // Transfer directly to issuer
     transfer::public_transfer(coin, self.issuer);
     
+    let total_tranches = capital_vault.num_tranches();
+    let remaining = total_tranches - capital_vault.tranches_released();
+    
     events::emit_tranche_released(
         self.id.to_inner(),
         tranche_idx,
         amount,
         self.issuer,
+        total_tranches,
+        remaining,
+        capital_vault.cumulative_released(),
+        clock.timestamp_ms(),
     );
 }
 
@@ -404,11 +422,18 @@ public fun release_next_ready_tranche(
     // Transfer directly to issuer
     transfer::public_transfer(coin, self.issuer);
     
+    let total_tranches = capital_vault.num_tranches();
+    let remaining = total_tranches - capital_vault.tranches_released();
+    
     events::emit_tranche_released(
         self.id.to_inner(),
         tranche_idx,
         amount,
         self.issuer,
+        total_tranches,
+        remaining,
+        capital_vault.cumulative_released(),
+        clock.timestamp_ms(),
     );
 }
 
@@ -430,6 +455,11 @@ public fun release_all_ready_tranches(
     // Transfer combined amount directly to issuer
     transfer::public_transfer(coin, self.issuer);
     
+    let total_tranches = capital_vault.num_tranches();
+    let remaining = total_tranches - capital_vault.tranches_released();
+    let cumulative = capital_vault.cumulative_released();
+    let release_time = clock.timestamp_ms();
+    
     // Emit events for each tranche
     let mut i = 0;
     while (i < indices.length()) {
@@ -440,6 +470,10 @@ public fun release_all_ready_tranches(
             idx,
             tranche_amount,
             self.issuer,
+            total_tranches,
+            remaining,
+            cumulative,
+            release_time,
         );
         i = i + 1;
     };

@@ -123,28 +123,88 @@ Modules are ordered by dependency (foundation first):
 
 **File:** `contracts/core/sources/events.move`
 
-**Purpose:** Standardized event definitions.
+**Purpose:** Standardized event definitions for off-chain indexing and dashboards.
 
-| Event | Fields | Emitter |
+**Normative Rule:** Any dashboard, explorer, or reporting surface that represents Tide data MUST be reproducible by an independent indexer using only on-chain events.
+
+#### Listing Lifecycle Events
+
+| Event | Fields | Purpose |
 |-------|--------|---------|
-| `Deposited` | listing_id, backer, amount, shares, pass_id | listing |
-| `Claimed` | listing_id, pass_id, backer, amount | listing |
-| `TrancheReleased` | listing_id, tranche_idx, amount, recipient | listing |
-| `RouteIn` | listing_id, source, amount | reward_vault |
-| `RewardIndexUpdated` | listing_id, old_index, new_index | reward_vault |
-| `Staked` | listing_id, amount, validator | staking_adapter |
-| `Unstaked` | listing_id, amount | staking_adapter |
-| `StateChanged` | listing_id, old_state, new_state | listing |
-| `Paused` / `Unpaused` | paused_by / unpaused_by | tide |
-| `ListingPauseChanged` | listing_id, paused | listing |
-| `ListingRegistered` | listing_id, listing_number, issuer | registry |
-| `RaiseFeeCollected` | listing_id, fee_amount, treasury, total_raised, fee_bps | capital_vault |
-| `StakingRewardSplit` | listing_id, total_rewards, backer_amount, treasury_amount, backer_bps | staking_adapter |
+| `ListingCreated` | listing_id, listing_number, issuer, config_hash, min_deposit, raise_fee_bps, staking_backer_bps | Full config at creation for audit trail |
+| `ListingActivated` | listing_id, activation_time | Marks start of deposit period |
+| `ListingFinalized` | listing_id, finalization_time, total_raised, total_backers, total_shares, num_tranches | Locks schedule and captures final raise metrics |
+| `ListingCompleted` | listing_id, total_released, total_distributed_rewards | Terminal state with lifetime metrics |
+| `StateChanged` | listing_id, old_state, new_state | Generic state transitions |
+
+#### Deposit & Claim Events
+
+| Event | Fields | Purpose |
+|-------|--------|---------|
+| `Deposited` | listing_id, backer, amount, shares, pass_id, total_raised, total_passes, epoch | Backer deposits with running totals for dashboard |
+| `Claimed` | listing_id, pass_id, backer, amount, shares, old_claim_index, new_claim_index, epoch | Reward claims with audit math |
+
+#### Capital Release Events
+
+| Event | Fields | Purpose |
+|-------|--------|---------|
+| `TrancheReleased` | listing_id, tranche_idx, amount, recipient, total_tranches, remaining_tranches, cumulative_released, release_time | Capital release with progress tracking |
+| `ScheduleFinalized` | listing_id, finalization_time, total_principal, initial_tranche_amount, monthly_tranche_amount, num_monthly_tranches, first_monthly_release_time, final_release_time | Full schedule for timeline visualization |
+
+#### Revenue Events
+
+| Event | Fields | Purpose |
+|-------|--------|---------|
+| `RouteIn` | listing_id, source, amount, cumulative_distributed, new_global_index | Revenue routing with running totals |
+| `RewardIndexUpdated` | listing_id, old_index, new_index | Index changes for verification |
+
+#### Staking Events
+
+| Event | Fields | Purpose |
+|-------|--------|---------|
+| `Staked` | listing_id, amount, validator, total_staked | Staking activity with running total |
+| `Unstaked` | listing_id, amount, total_staked | Unstaking activity with running total |
+| `StakingRewardsHarvested` | listing_id, gross_rewards, backer_rewards, treasury_rewards, new_reward_index | Reward harvesting with split details |
+
+#### Fee Events
+
+| Event | Fields | Purpose |
+|-------|--------|---------|
+| `RaiseFeeCollected` | listing_id, fee_amount, treasury, total_raised, fee_bps | Raise fee collection |
+| `StakingRewardSplit` | listing_id, total_rewards, backer_amount, treasury_amount, backer_bps | Staking reward distribution |
+| `TreasuryPayment` | listing_id, payment_type, amount, treasury | Generic treasury payments |
+
+#### Admin Events
+
+| Event | Fields | Purpose |
+|-------|--------|---------|
+| `Paused` / `Unpaused` | paused_by / unpaused_by | Global pause state changes |
+| `ListingPauseChanged` | listing_id, paused | Per-listing pause state |
+| `TreasuryUpdated` | old_treasury, new_treasury | Treasury address changes |
+
+#### Registry Events (in `registry.move`)
+
+| Event | Fields | Purpose |
+|-------|--------|---------|
+| `ListingRegistered` | listing_id, listing_number, issuer | Listing creation in registry |
 
 **Tasks:**
 - [x] Define event structs (past tense naming)
 - [x] Add `copy, drop` abilities
 - [x] Document each event
+- [x] Add running totals for dashboard derivation
+- [x] Add epoch/timestamps for time-series analysis
+- [x] Add verification fields (shares, indices) for audit
+
+**Off-Chain Feature Support:**
+
+| Feature | Required Events |
+|---------|-----------------|
+| Capital Transparency Dashboard | `Deposited`, `TrancheReleased`, `RouteIn`, `RaiseFeeCollected`, `StakingRewardSplit`, `ScheduleFinalized` |
+| Backer Identity & Reputation | `Deposited` (pass_id, backer), `Claimed` (pass_id, backer, amount) |
+| Listing Timeline | `ListingCreated`, `ListingActivated`, `ListingFinalized`, `ListingCompleted`, `TrancheReleased` |
+| Treasury Reporting | `RaiseFeeCollected`, `StakingRewardSplit`, `TreasuryPayment`, `TreasuryUpdated` |
+| Staking Dashboard | `Staked`, `Unstaked`, `StakingRewardsHarvested` |
 
 **Estimated complexity:** Low
 

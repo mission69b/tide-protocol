@@ -121,7 +121,7 @@ public fun stake(
     // Note: In real implementation, balance would be consumed by staking
     // self.pending_balance would be zero after staking
     
-    events::emit_staked(self.listing_id, amount, self.validator);
+    events::emit_staked(self.listing_id, amount, self.validator, self.staked_amount);
 }
 
 /// Process pending unstake requests.
@@ -145,7 +145,7 @@ public fun process_unstake(
     // In real implementation, balance would be restored from unstaking
     // For now, this is a no-op since we didn't actually stake
     
-    events::emit_unstaked(self.listing_id, amount);
+    events::emit_unstaked(self.listing_id, amount, self.staked_amount);
 }
 
 /// Collect staking rewards and split between backers and treasury.

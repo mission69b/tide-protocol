@@ -440,6 +440,20 @@ public fun count_ready_tranches(self: &CapitalVault, clock: &Clock): u64 {
     count
 }
 
+/// Calculate cumulative amount released to issuer.
+public fun cumulative_released(self: &CapitalVault): u64 {
+    let mut total = 0u64;
+    let mut i = 0;
+    while (i < self.tranches.length()) {
+        let tranche = &self.tranches[i];
+        if (tranche.released) {
+            total = total + tranche.amount;
+        };
+        i = i + 1;
+    };
+    total
+}
+
 /// Check if all tranches are released.
 public fun all_released(self: &CapitalVault): bool {
     self.tranches_released >= self.tranches.length()

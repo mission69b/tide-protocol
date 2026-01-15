@@ -117,7 +117,7 @@ Holds contributed principal (SUI).
 
 ---
 
-### 4) Native Sui Staking Adapter
+### 4) Native Sui Staking Adapter (Capital productivity)
 
 Provides limited capital productivity.
 
@@ -516,6 +516,59 @@ tide-protocol/
 - FAITH MUST consume Tide Core as an external dependency
 - No FAITH gameplay logic may live in this repository
 - Naming inside Move code MUST use Tide / Listing / Vault terminology (never "FEF")
+
+---
+
+## Off-Chain Data Requirements (Normative)
+
+All off-chain features (dashboards, explorers, APIs) MUST be derivable from on-chain events.
+
+**Normative Rule:** Any dashboard, explorer, or reporting surface that represents Tide data MUST be reproducible by an independent indexer using only on-chain events.
+
+This ensures:
+- You don't own the truth
+- Anyone can verify it
+- No selective reporting or narrative manipulation
+
+### Capital Transparency Dashboard
+
+The following data MUST be derivable from events:
+
+| Metric | Event Source |
+|--------|--------------|
+| Total Raised | Sum of `Deposited.amount` |
+| Total Backers | Count of unique `Deposited.backer` |
+| Total Released | Sum of `TrancheReleased.amount` |
+| Total Revenue | Sum of `RouteIn.amount` |
+| Total Distributed | Sum of `Claimed.amount` |
+| Raise Fee Collected | `RaiseFeeCollected.fee_amount` |
+| Staking Rewards (Backer) | Sum of `StakingRewardSplit.backer_amount` |
+| Staking Rewards (Treasury) | Sum of `StakingRewardSplit.treasury_amount` |
+| Release Progress | `TrancheReleased.remaining_tranches / total_tranches` |
+| Current Staked | Latest `Staked.total_staked` or `Unstaked.total_staked` |
+
+### Backer Identity & Reputation
+
+Backer identity and reputation MUST be built from immutable on-chain actions:
+
+| Metric | Event Source |
+|--------|--------------|
+| Backer Deposits | All `Deposited` events for backer address |
+| Pass Ownership | Track `Deposited.pass_id` → current owner via Sui object queries |
+| Claim History | All `Claimed` events for pass_id |
+| First Deposit Epoch | Min `Deposited.epoch` for backer |
+| Loyalty Score | Derived from deposit timing, hold duration, claim patterns |
+
+### Timeline Reconstruction
+
+Full listing timeline MUST be reconstructible:
+
+```
+ListingCreated → ListingActivated → [Deposited]* → ListingFinalized 
+  → ScheduleFinalized → [TrancheReleased]* → ListingCompleted
+```
+
+All state transitions emit `StateChanged` for secondary verification.
 
 ---
 

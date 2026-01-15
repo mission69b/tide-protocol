@@ -35,8 +35,10 @@ public struct RewardVault has key {
     global_index: u128,
     /// Total shares in the system (mirrored from CapitalVault).
     total_shares: u128,
-    /// Lifetime distributed amount.
+    /// Lifetime distributed amount (claims).
     total_distributed: u64,
+    /// Lifetime deposited amount (revenue routed in).
+    total_deposited: u64,
 }
 
 // === Package Functions ===
@@ -53,6 +55,7 @@ public(package) fun new(
         global_index: 0,
         total_shares: 0,
         total_distributed: 0,
+        total_deposited: 0,
     }
 }
 
@@ -110,11 +113,18 @@ public fun deposit_rewards(
         );
     };
     
-    // Add to balance
+    // Add to balance and track cumulative deposits
     self.balance.join(coin.into_balance());
+    self.total_deposited = self.total_deposited + amount;
     
     // Emit events
-    events::emit_route_in(self.listing_id, ctx.sender(), amount);
+    events::emit_route_in(
+        self.listing_id, 
+        ctx.sender(), 
+        amount, 
+        self.total_deposited,
+        self.global_index,
+    );
     if (self.global_index != old_index) {
         events::emit_reward_index_updated(self.listing_id, old_index, self.global_index);
     };
@@ -147,9 +157,14 @@ public fun total_shares(self: &RewardVault): u128 {
     self.total_shares
 }
 
-/// Get total distributed.
+/// Get total distributed (claims).
 public fun total_distributed(self: &RewardVault): u64 {
     self.total_distributed
+}
+
+/// Get total deposited (revenue routed in).
+public fun total_deposited(self: &RewardVault): u64 {
+    self.total_deposited
 }
 
 /// Calculate claimable amount for given shares and claim index.
