@@ -90,6 +90,23 @@ This document lists all security invariants that MUST hold for Tide Core v1. Vio
 
 ---
 
+## Deterministic Release Invariants
+
+| ID | Invariant | Location |
+|----|-----------|----------|
+| D1 | Released capital MUST transfer directly to issuer address | `listing.move`, `capital_vault.move` |
+| D2 | Released capital MUST NOT pass through RewardVault or intermediary | `capital_vault.move` |
+| D3 | Released capital MUST NOT accrue staking rewards after release timestamp | `staking_adapter.move` |
+| D4 | Release schedule MUST be immutable after finalization | `capital_vault.move` |
+| D5 | Tranches MAY be released in any order once time passes | `capital_vault.move` |
+| D6 | Tranches MAY be released late but MUST NOT be skipped or lost | `capital_vault.move` |
+| D7 | Issuer MUST NOT accelerate, delay, or reorder releases | `capital_vault.move` |
+| D8 | Release eligibility is a pure function of on-chain time | `capital_vault.move` |
+| D9 | Each unit of principal released once and only once | `capital_vault.move` |
+| D10 | Lack of revenue MUST NOT halt or delay capital releases | `listing.move` |
+
+---
+
 ## Staking Invariants
 
 | ID | Invariant | Location |

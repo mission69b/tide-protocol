@@ -169,18 +169,48 @@ public fun activate(
     events::emit_state_changed(self.id.to_inner(), old_state, self.state);
 }
 
-/// Finalize the listing, stopping new deposits.
+/// Finalize the listing, stopping new deposits and computing release schedule.
+/// This locks in the deterministic capital release schedule based on total raised.
 public fun finalize(
     self: &mut Listing,
     _council_cap: &CouncilCap,
+    capital_vault: &mut CapitalVault,
+    clock: &Clock,
     _ctx: &mut TxContext,
 ) {
     assert!(self.state == constants::state_active!(), errors::not_active());
+    
+    // Compute and lock the release schedule
+    capital_vault.finalize_schedule(clock);
     
     let old_state = self.state;
     self.state = constants::state_finalized!();
     
     events::emit_state_changed(self.id.to_inner(), old_state, self.state);
+}
+
+/// Finalize the listing and release the initial 20% tranche.
+/// This is the canonical v1 flow:
+/// 1. Stop accepting deposits
+/// 2. Compute deterministic release schedule
+/// 3. Collect raise fee (1%)
+/// 4. Release initial 20% to issuer
+public fun finalize_and_release_initial(
+    self: &mut Listing,
+    council_cap: &CouncilCap,
+    tide: &Tide,
+    capital_vault: &mut CapitalVault,
+    clock: &Clock,
+    ctx: &mut TxContext,
+) {
+    // Finalize first
+    finalize(self, council_cap, capital_vault, clock, ctx);
+    
+    // Collect raise fee
+    collect_raise_fee(self, tide, capital_vault, ctx);
+    
+    // Release initial tranche (index 0 = 20%)
+    release_tranche_at(self, tide, capital_vault, 0, clock, ctx);
 }
 
 /// Complete the listing after all tranches released.
@@ -302,7 +332,7 @@ public fun claim(
 }
 
 /// Collect raise fee before first tranche release.
-/// Must be called before release_tranche when next_tranche_idx == 0.
+/// Must be called after finalization but before any tranche release.
 /// Routes fee directly to Tide Treasury.
 public fun collect_raise_fee(
     self: &Listing,
@@ -325,9 +355,37 @@ public fun collect_raise_fee(
     transfer::public_transfer(fee_coin, treasury);
 }
 
-/// Release the next tranche to the issuer.
-/// If this is the first tranche, raise fee must be collected first.
-public fun release_tranche(
+/// Release a specific tranche by index.
+/// Pull-based: anyone can call once the tranche time has passed.
+/// Raise fee must be collected before any release.
+public fun release_tranche_at(
+    self: &Listing,
+    tide: &Tide,
+    capital_vault: &mut CapitalVault,
+    tranche_idx: u64,
+    clock: &Clock,
+    ctx: &mut TxContext,
+) {
+    tide.assert_not_paused();
+    assert!(!self.paused, errors::paused());
+    assert!(self.state == constants::state_finalized!(), errors::invalid_state());
+    
+    let (amount, coin) = capital_vault.release_tranche_at(tranche_idx, clock, ctx);
+    
+    // Transfer directly to issuer
+    transfer::public_transfer(coin, self.issuer);
+    
+    events::emit_tranche_released(
+        self.id.to_inner(),
+        tranche_idx,
+        amount,
+        self.issuer,
+    );
+}
+
+/// Release the next ready tranche.
+/// Convenience function that finds and releases the first ready tranche.
+public fun release_next_ready_tranche(
     self: &Listing,
     tide: &Tide,
     capital_vault: &mut CapitalVault,
@@ -336,39 +394,55 @@ public fun release_tranche(
 ) {
     tide.assert_not_paused();
     assert!(!self.paused, errors::paused());
-    assert!(
-        self.state == constants::state_active!() || 
-        self.state == constants::state_finalized!(),
-        errors::invalid_state()
-    );
+    assert!(self.state == constants::state_finalized!(), errors::invalid_state());
     
-    let (amount, coin) = capital_vault.release_tranche(clock, ctx);
+    let (tranche_idx, amount, coin) = capital_vault.release_next_ready_tranche(clock, ctx);
     
-    // Transfer to issuer
+    // Transfer directly to issuer
     transfer::public_transfer(coin, self.issuer);
     
     events::emit_tranche_released(
         self.id.to_inner(),
-        capital_vault.next_tranche_idx() - 1,
+        tranche_idx,
         amount,
         self.issuer,
     );
 }
 
-/// Convenience function: collect fee and release first tranche in one call.
-/// Only use when releasing the first tranche.
-public fun collect_fee_and_release_tranche(
+/// Release all tranches that are currently ready.
+/// Convenience function that releases all accumulated ready tranches.
+public fun release_all_ready_tranches(
     self: &Listing,
     tide: &Tide,
     capital_vault: &mut CapitalVault,
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
-    // Collect fee first (only works before first release)
-    collect_raise_fee(self, tide, capital_vault, ctx);
+    tide.assert_not_paused();
+    assert!(!self.paused, errors::paused());
+    assert!(self.state == constants::state_finalized!(), errors::invalid_state());
     
-    // Then release tranche
-    release_tranche(self, tide, capital_vault, clock, ctx);
+    let (indices, total_amount, coin) = capital_vault.release_all_ready_tranches(clock, ctx);
+    
+    // Transfer combined amount directly to issuer
+    transfer::public_transfer(coin, self.issuer);
+    
+    // Emit events for each tranche
+    let mut i = 0;
+    while (i < indices.length()) {
+        let idx = indices[i];
+        let (tranche_amount, _, _) = capital_vault.tranche_at(idx);
+        events::emit_tranche_released(
+            self.id.to_inner(),
+            idx,
+            tranche_amount,
+            self.issuer,
+        );
+        i = i + 1;
+    };
+    
+    let _ = total_amount;
+    let _ = indices;
 }
 
 // === View Functions ===

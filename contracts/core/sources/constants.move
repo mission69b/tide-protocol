@@ -27,6 +27,24 @@ public macro fun staking_backer_bps(): u64 { 8_000 }
 /// Staking reward split for treasury in basis points (20% = 2000 bps).
 public macro fun staking_treasury_bps(): u64 { 2_000 }
 
+// === Capital Release Schedule Constants ===
+
+/// Initial release at finalization in basis points (20% = 2000 bps).
+public macro fun initial_release_bps(): u64 { 2_000 }
+
+/// Remaining capital released over monthly tranches (80% = 8000 bps).
+public macro fun monthly_release_bps(): u64 { 8_000 }
+
+/// Number of monthly tranches for remaining capital.
+public macro fun monthly_tranche_count(): u64 { 12 }
+
+/// Duration of each tranche period in milliseconds (30 days).
+/// 30 days = 30 * 24 * 60 * 60 * 1000 = 2,592,000,000 ms
+public macro fun tranche_interval_ms(): u64 { 2_592_000_000 }
+
+/// Total schedule duration in months.
+public macro fun schedule_duration_months(): u64 { 12 }
+
 // === Lifecycle States ===
 
 /// Listing is in draft mode, config editable, no deposits.

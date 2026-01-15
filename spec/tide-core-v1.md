@@ -188,6 +188,112 @@ Represents a backer's full economic position.
 
 ---
 
+## Deterministic Capital Release (v1)
+
+### Purpose
+
+The Deterministic Capital Release mechanism defines how and when contributed capital is released to the issuer, in a manner that is:
+
+- **Non-discretionary** — No human judgment affects timing
+- **Time-based** — Purely a function of on-chain time
+- **Fully auditable** — Schedule is immutable and public
+- **Independent** — Not affected by revenue, performance, or behavior
+
+This mechanism ensures capital formation without trust in people, only in code.
+
+### Release Model (v1 Canonical Schedule)
+
+Each Listing MUST define a fixed release schedule that is fully determined and immutable at the moment the listing is finalized.
+
+**Canonical Schedule (12 months):**
+
+| Phase | Timing | Amount |
+|-------|--------|--------|
+| Initial Release | At `finalize()` | 20% of total raised capital |
+| Monthly Tranches | Months 1–12 | 80% released evenly (6.67% each) |
+
+Each monthly tranche represents 1/12 of the remaining 80% and becomes releasable at fixed 30-day intervals from finalization.
+
+**Note:** Raise fee (1%) is deducted before calculating release amounts.
+
+### Schedule Computation (Normative)
+
+Release schedule MUST be computed and stored at **listing finalization**:
+
+```
+finalization_time = Clock.timestamp_ms() at finalize()
+
+tranche[0].amount = (total_raised - raise_fee) * 20%
+tranche[0].release_time = finalization_time  // Immediate
+
+for i in 1..=12:
+    tranche[i].amount = (total_raised - raise_fee) * 80% / 12
+    tranche[i].release_time = finalization_time + (i * 30 days)
+```
+
+**Time Definition (Normative):**
+
+- All release timing MUST be enforced using `sui::clock::Clock`
+- Release timestamps MUST be computed and stored at listing finalization
+- No external oracle or off-chain signal may influence release timing
+
+**Normative constraint:** Release eligibility MUST be a pure function of on-chain time and listing state.
+
+### Release Semantics (Normative)
+
+**Pull-based releases:**
+
+- Any account MAY call `release_tranche()` once conditions are met
+- Tranches MAY be released late but MUST NOT be skipped or lost
+- Missed tranches MUST accumulate and remain releasable
+- The issuer MUST NOT be able to accelerate, delay, or reorder releases
+
+**Invariant:** Each unit of principal may be released once and only once, and only according to the predefined schedule.
+
+### Capital Flow Invariants
+
+| ID | Invariant |
+|----|-----------|
+| D1 | Released capital MUST transfer directly to the issuer address |
+| D2 | Released capital MUST NOT pass through RewardVault or any intermediary |
+| D3 | Released capital MUST NOT accrue staking rewards after its release timestamp |
+| D4 | Release schedule MUST be immutable after finalization |
+| D5 | Tranches MUST be releasable in any order (no forced sequence) |
+
+### Relationship to Revenue & Performance (Critical)
+
+Capital release is strictly time-based and MUST NOT depend on:
+
+- Protocol revenue volume
+- Revenue consistency
+- Price performance
+- User activity
+- Issuer behavior (except safety violations)
+
+**Normative rule:** Lack of revenue, reduced revenue, or zero revenue MUST NOT automatically halt or delay capital releases.
+
+**Backers are guaranteed rules, not returns.**
+
+### Pause Interaction (Safety Only)
+
+Capital releases MAY be paused only via the Listing pause mechanism under objective safety conditions, including but not limited to:
+
+- Critical bug in Tide Core contracts
+- Violation or bypass of the revenue routing invariant
+- Issuer upgrade breaking adapter guarantees
+- Chain-level or validator-level emergency
+
+When a listing is paused:
+
+- ❌ Future capital releases STOP
+- ✅ Previously released capital is unaffected
+- ✅ Locked capital MAY remain staked
+- ✅ Reward claims remain ENABLED by default
+
+**Invariant:** Pause MUST NOT allow capital redirection, seizure, or schedule mutation.
+
+---
+
 ## Governance & Control (v1)
 
 v1 includes **minimal council gating** to support a registry-first architecture without governance theater.
