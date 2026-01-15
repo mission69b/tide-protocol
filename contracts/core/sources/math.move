@@ -11,7 +11,8 @@ public fun mul_div(a: u128, b: u128, c: u128): u128 {
     assert!(c > 0, 0); // division by zero
     // Use u256 for intermediate to prevent overflow
     let result = ((a as u256) * (b as u256)) / (c as u256);
-    assert!(result <= (18446744073709551615u128 as u256) * 2, 1); // fits u128
+    // Check result fits in u128 (max = 2^128 - 1)
+    assert!(result <= 340282366920938463463374607431768211455u256, 1);
     (result as u128)
 }
 

@@ -132,3 +132,68 @@ public fun destroy_for_testing(registry: ListingRegistry) {
     let _ = listings;
     id.delete();
 }
+
+// === Unit Tests ===
+
+#[test]
+fun test_register_listing() {
+    use tide_core::council;
+    
+    let mut ctx = tx_context::dummy();
+    let mut registry = new_for_testing(&mut ctx);
+    let cap = council::new_cap_for_testing(&mut ctx);
+    
+    // Initially empty
+    assert!(registry.listing_count() == 0);
+    
+    // Register a listing
+    let listing_id = object::id_from_address(@0x1);
+    let issuer = @0xBEEF;
+    let listing_number = registry.register_listing(&cap, listing_id, issuer);
+    
+    assert!(listing_number == 1);
+    assert!(registry.listing_count() == 1);
+    assert!(registry.listing_at(0) == listing_id);
+    assert!(registry.is_registered(listing_id));
+    
+    // Cleanup
+    council::destroy_cap_for_testing(cap);
+    destroy_for_testing(registry);
+}
+
+#[test]
+fun test_register_multiple_listings() {
+    use tide_core::council;
+    
+    let mut ctx = tx_context::dummy();
+    let mut registry = new_for_testing(&mut ctx);
+    let cap = council::new_cap_for_testing(&mut ctx);
+    
+    // Register multiple listings
+    let id1 = object::id_from_address(@0x1);
+    let id2 = object::id_from_address(@0x2);
+    let id3 = object::id_from_address(@0x3);
+    
+    let num1 = registry.register_listing(&cap, id1, @0xA);
+    let num2 = registry.register_listing(&cap, id2, @0xB);
+    let num3 = registry.register_listing(&cap, id3, @0xC);
+    
+    // Numbers are monotonically increasing
+    assert!(num1 == 1);
+    assert!(num2 == 2);
+    assert!(num3 == 3);
+    assert!(registry.listing_count() == 3);
+    
+    // All registered
+    assert!(registry.is_registered(id1));
+    assert!(registry.is_registered(id2));
+    assert!(registry.is_registered(id3));
+    
+    // Unregistered ID returns false
+    let unknown_id = object::id_from_address(@0x999);
+    assert!(!registry.is_registered(unknown_id));
+    
+    // Cleanup
+    council::destroy_cap_for_testing(cap);
+    destroy_for_testing(registry);
+}

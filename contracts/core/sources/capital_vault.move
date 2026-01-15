@@ -529,3 +529,277 @@ public fun destroy_for_testing(vault: CapitalVault) {
     balance.destroy_for_testing();
     let _ = tranches;
 }
+
+#[test_only]
+public fun new_with_deferred_for_testing(
+    listing_id: ID,
+    issuer: address,
+    ctx: &mut TxContext,
+): CapitalVault {
+    new_with_deferred_schedule(listing_id, issuer, ctx)
+}
+
+// === Unit Tests ===
+
+#[test_only]
+const EBELOW_MINIMUM: u64 = 14;
+#[test_only]
+const ETRANCHE_NOT_READY: u64 = 6;
+#[test_only]
+const EALREADY_RELEASED: u64 = 7;
+
+#[test]
+fun test_new_vault() {
+    let mut ctx = tx_context::dummy();
+    let listing_id = object::id_from_address(@0x1);
+    let issuer = @0xCAFE;
+    
+    let vault = new_with_deferred_for_testing(listing_id, issuer, &mut ctx);
+    
+    assert!(vault.listing_id() == listing_id);
+    assert!(vault.issuer() == issuer);
+    assert!(vault.total_principal() == 0);
+    assert!(vault.total_shares() == 0);
+    assert!(vault.num_tranches() == 0);
+    assert!(!vault.is_schedule_finalized());
+    
+    destroy_for_testing(vault);
+}
+
+#[test]
+fun test_accept_deposit() {
+    use sui::coin;
+    use sui::sui::SUI;
+    
+    let mut ctx = tx_context::dummy();
+    let listing_id = object::id_from_address(@0x1);
+    let issuer = @0xCAFE;
+    
+    let mut vault = new_with_deferred_for_testing(listing_id, issuer, &mut ctx);
+    
+    // Deposit 10 SUI
+    let deposit = coin::mint_for_testing<SUI>(10_000_000_000, &mut ctx);
+    let shares = vault.accept_deposit(deposit);
+    
+    assert!(shares > 0);
+    assert!(vault.total_principal() == 10_000_000_000);
+    assert!(vault.total_shares() == shares);
+    assert!(vault.balance() == 10_000_000_000);
+    
+    destroy_for_testing(vault);
+}
+
+#[test]
+fun test_multiple_deposits_proportional_shares() {
+    use sui::coin;
+    use sui::sui::SUI;
+    
+    let mut ctx = tx_context::dummy();
+    let listing_id = object::id_from_address(@0x1);
+    
+    let mut vault = new_with_deferred_for_testing(listing_id, @0xCAFE, &mut ctx);
+    
+    // First deposit: 100 SUI
+    let deposit1 = coin::mint_for_testing<SUI>(100_000_000_000, &mut ctx);
+    let shares1 = vault.accept_deposit(deposit1);
+    
+    // Second deposit: 50 SUI (half, should get half the shares)
+    let deposit2 = coin::mint_for_testing<SUI>(50_000_000_000, &mut ctx);
+    let shares2 = vault.accept_deposit(deposit2);
+    
+    // Second depositor should have half the shares of first
+    // Allow for rounding
+    let expected_shares2 = shares1 / 2;
+    assert!(shares2 >= expected_shares2 - 1 && shares2 <= expected_shares2 + 1);
+    
+    assert!(vault.total_principal() == 150_000_000_000);
+    
+    destroy_for_testing(vault);
+}
+
+#[test]
+#[expected_failure(abort_code = EBELOW_MINIMUM)]
+fun test_deposit_below_minimum() {
+    use sui::coin;
+    use sui::sui::SUI;
+    
+    let mut ctx = tx_context::dummy();
+    let listing_id = object::id_from_address(@0x1);
+    
+    // Minimum is 1 SUI (1_000_000_000 MIST)
+    let mut vault = new_with_deferred_for_testing(listing_id, @0xCAFE, &mut ctx);
+    
+    // Try to deposit 0.5 SUI - should fail
+    let small_deposit = coin::mint_for_testing<SUI>(500_000_000, &mut ctx);
+    let _shares = vault.accept_deposit(small_deposit);
+    
+    destroy_for_testing(vault);
+}
+
+#[test]
+fun test_finalize_schedule() {
+    use sui::coin;
+    use sui::sui::SUI;
+    use sui::clock;
+    
+    let mut ctx = tx_context::dummy();
+    let listing_id = object::id_from_address(@0x1);
+    
+    let mut vault = new_with_deferred_for_testing(listing_id, @0xCAFE, &mut ctx);
+    
+    // Deposit 100 SUI
+    let deposit = coin::mint_for_testing<SUI>(100_000_000_000, &mut ctx);
+    let _shares = vault.accept_deposit(deposit);
+    
+    // Finalize schedule
+    let clock = clock::create_for_testing(&mut ctx);
+    vault.finalize_schedule(&clock);
+    
+    assert!(vault.is_schedule_finalized());
+    assert!(vault.num_tranches() == 13); // 1 initial + 12 monthly
+    
+    // Net capital = 100 SUI - 1% fee = 99 SUI
+    // Initial tranche = 20% of 99 SUI = 19.8 SUI = 19_800_000_000 MIST
+    let (initial_amount, _, _) = vault.tranche_at(0);
+    assert!(initial_amount == 19_800_000_000);
+    
+    clock.destroy_for_testing();
+    destroy_for_testing(vault);
+}
+
+#[test]
+fun test_tranche_release() {
+    use sui::coin;
+    use sui::sui::SUI;
+    use sui::clock;
+    
+    let mut ctx = tx_context::dummy();
+    let listing_id = object::id_from_address(@0x1);
+    let treasury = @0xFEE;
+    
+    let mut vault = new_with_deferred_for_testing(listing_id, @0xCAFE, &mut ctx);
+    
+    // Deposit and finalize
+    let deposit = coin::mint_for_testing<SUI>(100_000_000_000, &mut ctx);
+    let _shares = vault.accept_deposit(deposit);
+    
+    let mut clock = clock::create_for_testing(&mut ctx);
+    vault.finalize_schedule(&clock);
+    
+    // Must collect raise fee before releasing tranches
+    let fee_coin = vault.collect_raise_fee(treasury, &mut ctx);
+    fee_coin.burn_for_testing();
+    
+    // Initial tranche should be ready immediately (release_time = finalization_time)
+    assert!(vault.is_tranche_ready(0, &clock));
+    
+    // Release initial tranche
+    let (amount, coin) = vault.release_tranche_at(0, &clock, &mut ctx);
+    
+    // Net capital = 99 SUI, initial = 20% = 19.8 SUI
+    assert!(amount == 19_800_000_000);
+    assert!(coin.value() == 19_800_000_000);
+    assert!(vault.tranches_released() == 1);
+    
+    // Check cumulative released
+    assert!(vault.cumulative_released() == 19_800_000_000);
+    
+    coin.burn_for_testing();
+    clock.destroy_for_testing();
+    destroy_for_testing(vault);
+}
+
+#[test]
+#[expected_failure(abort_code = ETRANCHE_NOT_READY)]
+fun test_cannot_release_before_time() {
+    use sui::coin;
+    use sui::sui::SUI;
+    use sui::clock;
+    
+    let mut ctx = tx_context::dummy();
+    let listing_id = object::id_from_address(@0x1);
+    let treasury = @0xFEE;
+    
+    let mut vault = new_with_deferred_for_testing(listing_id, @0xCAFE, &mut ctx);
+    
+    let deposit = coin::mint_for_testing<SUI>(100_000_000_000, &mut ctx);
+    let _shares = vault.accept_deposit(deposit);
+    
+    let clock = clock::create_for_testing(&mut ctx);
+    vault.finalize_schedule(&clock);
+    
+    // Must collect raise fee first
+    let fee_coin = vault.collect_raise_fee(treasury, &mut ctx);
+    fee_coin.burn_for_testing();
+    
+    // Try to release monthly tranche (index 1) before its time
+    // Monthly tranches start 30 days after finalization
+    let (_amount, coin) = vault.release_tranche_at(1, &clock, &mut ctx);
+    
+    coin.burn_for_testing();
+    clock.destroy_for_testing();
+    destroy_for_testing(vault);
+}
+
+#[test]
+fun test_raise_fee_collection() {
+    use sui::coin;
+    use sui::sui::SUI;
+    use sui::clock;
+    
+    let mut ctx = tx_context::dummy();
+    let listing_id = object::id_from_address(@0x1);
+    let treasury = @0xFEE;
+    
+    // 1% raise fee (100 bps)
+    let mut vault = new_with_deferred_for_testing(listing_id, @0xCAFE, &mut ctx);
+    
+    // Deposit 100 SUI
+    let deposit = coin::mint_for_testing<SUI>(100_000_000_000, &mut ctx);
+    let _shares = vault.accept_deposit(deposit);
+    
+    let clock = clock::create_for_testing(&mut ctx);
+    vault.finalize_schedule(&clock);
+    
+    // Collect raise fee
+    let fee_coin = vault.collect_raise_fee(treasury, &mut ctx);
+    
+    // 1% of 100 SUI = 1 SUI
+    assert!(fee_coin.value() == 1_000_000_000);
+    assert!(vault.is_raise_fee_collected());
+    
+    fee_coin.burn_for_testing();
+    clock.destroy_for_testing();
+    destroy_for_testing(vault);
+}
+
+#[test]
+#[expected_failure(abort_code = EALREADY_RELEASED)]
+fun test_cannot_collect_fee_twice() {
+    use sui::coin;
+    use sui::sui::SUI;
+    use sui::clock;
+    
+    let mut ctx = tx_context::dummy();
+    let listing_id = object::id_from_address(@0x1);
+    let treasury = @0xFEE;
+    
+    let mut vault = new_with_deferred_for_testing(listing_id, @0xCAFE, &mut ctx);
+    
+    let deposit = coin::mint_for_testing<SUI>(100_000_000_000, &mut ctx);
+    let _shares = vault.accept_deposit(deposit);
+    
+    let clock = clock::create_for_testing(&mut ctx);
+    vault.finalize_schedule(&clock);
+    
+    // First collection
+    let fee1 = vault.collect_raise_fee(treasury, &mut ctx);
+    fee1.burn_for_testing();
+    
+    // Second collection should fail
+    let fee2 = vault.collect_raise_fee(treasury, &mut ctx);
+    fee2.burn_for_testing();
+    
+    clock.destroy_for_testing();
+    destroy_for_testing(vault);
+}

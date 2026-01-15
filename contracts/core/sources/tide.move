@@ -122,3 +122,106 @@ public fun init_for_testing(ctx: &mut TxContext) {
 public fun new_admin_cap_for_testing(ctx: &mut TxContext): AdminCap {
     AdminCap { id: object::new(ctx) }
 }
+
+#[test_only]
+public fun new_tide_for_testing(ctx: &mut TxContext): Tide {
+    Tide {
+        id: object::new(ctx),
+        treasury: ctx.sender(),
+        paused: false,
+        version: constants::version!(),
+    }
+}
+
+#[test_only]
+public fun destroy_admin_cap_for_testing(cap: AdminCap) {
+    let AdminCap { id } = cap;
+    object::delete(id);
+}
+
+#[test_only]
+public fun destroy_tide_for_testing(tide: Tide) {
+    let Tide { id, treasury: _, paused: _, version: _ } = tide;
+    object::delete(id);
+}
+
+// === Unit Tests ===
+
+#[test_only]
+const EPAUSED: u64 = 1;
+
+#[test]
+fun test_pause_unpause() {
+    let mut ctx = tx_context::dummy();
+    let mut tide = new_tide_for_testing(&mut ctx);
+    let cap = new_admin_cap_for_testing(&mut ctx);
+    
+    // Initially not paused
+    assert!(!tide.is_paused());
+    
+    // Pause
+    tide.pause(&cap, &ctx);
+    assert!(tide.is_paused());
+    
+    // Unpause
+    tide.unpause(&cap, &ctx);
+    assert!(!tide.is_paused());
+    
+    // Cleanup
+    destroy_admin_cap_for_testing(cap);
+    destroy_tide_for_testing(tide);
+}
+
+#[test]
+fun test_treasury_update() {
+    let mut ctx = tx_context::dummy();
+    let mut tide = new_tide_for_testing(&mut ctx);
+    let cap = new_admin_cap_for_testing(&mut ctx);
+    
+    let new_treasury = @0xCAFE;
+    tide.set_treasury(&cap, new_treasury, &mut ctx);
+    
+    assert!(tide.treasury() == new_treasury);
+    
+    // Cleanup
+    destroy_admin_cap_for_testing(cap);
+    destroy_tide_for_testing(tide);
+}
+
+#[test]
+fun test_version() {
+    let mut ctx = tx_context::dummy();
+    let tide = new_tide_for_testing(&mut ctx);
+    
+    assert!(tide.version() == constants::version!());
+    
+    destroy_tide_for_testing(tide);
+}
+
+#[test]
+fun test_assert_not_paused_when_not_paused() {
+    let mut ctx = tx_context::dummy();
+    let tide = new_tide_for_testing(&mut ctx);
+    
+    // Should not abort
+    tide.assert_not_paused();
+    
+    destroy_tide_for_testing(tide);
+}
+
+#[test]
+#[expected_failure(abort_code = EPAUSED)]
+fun test_assert_not_paused_aborts_when_paused() {
+    let mut ctx = tx_context::dummy();
+    let mut tide = new_tide_for_testing(&mut ctx);
+    let cap = new_admin_cap_for_testing(&mut ctx);
+    
+    tide.pause(&cap, &ctx);
+    
+    // Should abort
+    tide.assert_not_paused();
+    
+    // Cleanup (won't reach here)
+    destroy_admin_cap_for_testing(cap);
+    destroy_tide_for_testing(tide);
+}

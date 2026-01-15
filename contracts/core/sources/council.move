@@ -114,3 +114,44 @@ public fun destroy_cap_for_testing(cap: CouncilCap) {
     let CouncilCap { id } = cap;
     id.delete();
 }
+
+#[test_only]
+public fun new_config_for_testing(ctx: &mut TxContext): CouncilConfig {
+    CouncilConfig {
+        id: object::new(ctx),
+        threshold: 2,
+        members: 3,
+        version: 1,
+    }
+}
+
+#[test_only]
+public fun destroy_config_for_testing(config: CouncilConfig) {
+    let CouncilConfig { id, threshold: _, members: _, version: _ } = config;
+    id.delete();
+}
+
+// === Unit Tests ===
+
+#[test]
+fun test_council_cap_creation() {
+    let mut ctx = tx_context::dummy();
+    let cap = new_cap_for_testing(&mut ctx);
+    
+    // Cap exists
+    let _ = &cap;
+    
+    destroy_cap_for_testing(cap);
+}
+
+#[test]
+fun test_council_config_values() {
+    let mut ctx = tx_context::dummy();
+    let config = new_config_for_testing(&mut ctx);
+    
+    assert!(config.threshold() == 2);
+    assert!(config.members() == 3);
+    assert!(config.config_version() == 1);
+    
+    destroy_config_for_testing(config);
+}

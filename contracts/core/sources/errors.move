@@ -67,3 +67,36 @@ public fun version_mismatch(): u64 { 12 }
 public fun all_tranches_released(): u64 { 13 }
 public fun below_minimum(): u64 { 14 }
 
+// === Test Constants (for expected_failure attributes) ===
+
+#[test_only]
+const ENOT_ACTIVE: u64 = 0;
+#[test_only]
+const EPAUSED: u64 = 1;
+#[test_only]
+const EINVALID_AMOUNT: u64 = 2;
+#[test_only]
+const ENOTHING_TO_CLAIM: u64 = 3;
+#[test_only]
+const ENOT_AUTHORIZED: u64 = 4;
+#[test_only]
+const EINVALID_STATE: u64 = 5;
+#[test_only]
+const ETRANCHE_NOT_READY: u64 = 6;
+#[test_only]
+const EALREADY_RELEASED: u64 = 7;
+#[test_only]
+const EINSUFFICIENT_BALANCE: u64 = 8;
+#[test_only]
+const ESTAKING_LOCKED: u64 = 9;
+#[test_only]
+const EWRONG_LISTING: u64 = 10;
+#[test_only]
+const ENOT_DRAFT: u64 = 11;
+#[test_only]
+const EVERSION_MISMATCH: u64 = 12;
+#[test_only]
+const EALL_TRANCHES_RELEASED: u64 = 13;
+#[test_only]
+const EBELOW_MINIMUM: u64 = 14;
+

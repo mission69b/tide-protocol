@@ -223,3 +223,151 @@ public fun destroy_route_cap_for_testing(cap: RouteCapability) {
     let RouteCapability { id, .. } = cap;
     id.delete();
 }
+
+#[test_only]
+public fun set_total_shares_for_testing(self: &mut RewardVault, shares: u128) {
+    set_total_shares(self, shares)
+}
+
+#[test_only]
+public fun destroy_with_balance_for_testing(vault: RewardVault) {
+    let RewardVault { id, balance, .. } = vault;
+    id.delete();
+    sui::test_utils::destroy(balance);
+}
+
+// === Unit Tests ===
+
+#[test_only]
+const ENOT_AUTHORIZED: u64 = 4;
+
+#[test]
+fun test_new_vault() {
+    let mut ctx = tx_context::dummy();
+    let listing_id = object::id_from_address(@0x1);
+    
+    let vault = new_for_testing(listing_id, &mut ctx);
+    
+    assert!(vault.listing_id() == listing_id);
+    assert!(vault.global_index() == 0);
+    assert!(vault.total_shares() == 0);
+    assert!(vault.balance() == 0);
+    assert!(vault.total_distributed() == 0);
+    assert!(vault.total_deposited() == 0);
+    
+    destroy_for_testing(vault);
+}
+
+#[test]
+fun test_deposit_rewards_updates_index() {
+    use sui::coin;
+    use sui::sui::SUI;
+    
+    let mut ctx = tx_context::dummy();
+    let listing_id = object::id_from_address(@0x1);
+    
+    let mut vault = new_for_testing(listing_id, &mut ctx);
+    let cap = create_route_cap_for_testing(listing_id, &mut ctx);
+    
+    // Set shares first
+    vault.set_total_shares_for_testing(1_000_000_000_000); // 1e12
+    
+    // Deposit rewards
+    let reward_coin = coin::mint_for_testing<SUI>(100_000_000, &mut ctx); // 0.1 SUI
+    vault.deposit_rewards(&cap, reward_coin, &ctx);
+    
+    // Index should be updated
+    assert!(vault.global_index() > 0);
+    assert!(vault.balance() == 100_000_000);
+    assert!(vault.total_deposited() == 100_000_000);
+    
+    // Cleanup
+    destroy_route_cap_for_testing(cap);
+    destroy_with_balance_for_testing(vault);
+}
+
+#[test]
+fun test_index_monotonically_increases() {
+    use sui::coin;
+    use sui::sui::SUI;
+    
+    let mut ctx = tx_context::dummy();
+    let listing_id = object::id_from_address(@0x1);
+    
+    let mut vault = new_for_testing(listing_id, &mut ctx);
+    let cap = create_route_cap_for_testing(listing_id, &mut ctx);
+    
+    vault.set_total_shares_for_testing(1_000_000_000_000);
+    
+    // First deposit
+    let coin1 = coin::mint_for_testing<SUI>(100_000_000, &mut ctx);
+    vault.deposit_rewards(&cap, coin1, &ctx);
+    let index_after_first = vault.global_index();
+    
+    // Second deposit
+    let coin2 = coin::mint_for_testing<SUI>(200_000_000, &mut ctx);
+    vault.deposit_rewards(&cap, coin2, &ctx);
+    let index_after_second = vault.global_index();
+    
+    // Index should be monotonically increasing
+    assert!(index_after_second > index_after_first);
+    
+    // Cleanup
+    destroy_route_cap_for_testing(cap);
+    destroy_with_balance_for_testing(vault);
+}
+
+#[test]
+fun test_calculate_claimable() {
+    use sui::coin;
+    use sui::sui::SUI;
+    
+    let mut ctx = tx_context::dummy();
+    let listing_id = object::id_from_address(@0x1);
+    
+    let mut vault = new_for_testing(listing_id, &mut ctx);
+    let cap = create_route_cap_for_testing(listing_id, &mut ctx);
+    
+    // Setup: 1000 shares total, backer has 100 shares (10%)
+    let total_shares: u128 = 1_000_000_000_000_000; // 1e15
+    let backer_shares: u128 = 100_000_000_000_000;  // 1e14 (10%)
+    
+    vault.set_total_shares_for_testing(total_shares);
+    
+    // Deposit 1000 SUI worth of rewards
+    let rewards = coin::mint_for_testing<SUI>(1_000_000_000_000, &mut ctx); // 1000 SUI
+    vault.deposit_rewards(&cap, rewards, &ctx);
+    
+    // Backer claiming from index 0 should get ~10% of rewards (100 SUI)
+    let claimable = vault.calculate_claimable(backer_shares, 0);
+    
+    // Should be approximately 100 SUI (100_000_000_000 MIST)
+    // Allow for rounding
+    assert!(claimable >= 99_000_000_000 && claimable <= 101_000_000_000);
+    
+    // Cleanup
+    destroy_route_cap_for_testing(cap);
+    destroy_with_balance_for_testing(vault);
+}
+
+#[test]
+#[expected_failure(abort_code = ENOT_AUTHORIZED)]
+fun test_deposit_wrong_cap() {
+    use sui::coin;
+    use sui::sui::SUI;
+    
+    let mut ctx = tx_context::dummy();
+    let listing_id = object::id_from_address(@0x1);
+    let other_listing_id = object::id_from_address(@0x2);
+    
+    let mut vault = new_for_testing(listing_id, &mut ctx);
+    let wrong_cap = create_route_cap_for_testing(other_listing_id, &mut ctx);
+    
+    // Try deposit with wrong cap - should fail
+    let coin = coin::mint_for_testing<SUI>(100, &mut ctx);
+    vault.deposit_rewards(&wrong_cap, coin, &ctx);
+    
+    // Cleanup (won't reach)
+    destroy_route_cap_for_testing(wrong_cap);
+    destroy_for_testing(vault);
+}
