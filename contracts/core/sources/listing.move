@@ -41,6 +41,7 @@ public struct ListingCap has key, store {
 
 /// Configuration parameters for a listing.
 /// Used to compute the config hash.
+/// All fee parameters are disclosed here for transparency.
 public struct ListingConfig has copy, drop, store {
     /// Issuer address.
     issuer: address,
@@ -52,6 +53,12 @@ public struct ListingConfig has copy, drop, store {
     tranche_times: vector<u64>,
     /// Revenue routing BPS (e.g., 1000 = 10%).
     revenue_bps: u64,
+    /// Raise fee in basis points (1% = 100 bps).
+    /// Deducted from total raised before first release.
+    raise_fee_bps: u64,
+    /// Staking reward split for backers in BPS (80% = 8000).
+    /// Remaining goes to treasury.
+    staking_backer_bps: u64,
 }
 
 /// Main listing object orchestrating the capital raise.
@@ -89,13 +96,16 @@ public fun new(
     revenue_bps: u64,
     ctx: &mut TxContext,
 ): (Listing, CapitalVault, RewardVault, StakingAdapter, ListingCap, RouteCapability) {
-    // Create config and compute hash
+    // Create config with fee disclosure
     let config = ListingConfig {
         issuer,
         validator,
         tranche_amounts: tranche_amounts,
         tranche_times: tranche_times,
         revenue_bps,
+        // Fee parameters from protocol constants (disclosed in config hash)
+        raise_fee_bps: constants::raise_fee_bps!(),
+        staking_backer_bps: constants::staking_backer_bps!(),
     };
     let config_hash = compute_config_hash(&config);
     
@@ -291,7 +301,32 @@ public fun claim(
     coin
 }
 
+/// Collect raise fee before first tranche release.
+/// Must be called before release_tranche when next_tranche_idx == 0.
+/// Routes fee directly to Tide Treasury.
+public fun collect_raise_fee(
+    self: &Listing,
+    tide: &Tide,
+    capital_vault: &mut CapitalVault,
+    ctx: &mut TxContext,
+) {
+    tide.assert_not_paused();
+    assert!(!self.paused, errors::paused());
+    assert!(
+        self.state == constants::state_active!() || 
+        self.state == constants::state_finalized!(),
+        errors::invalid_state()
+    );
+    
+    let treasury = tide.treasury();
+    let fee_coin = capital_vault.collect_raise_fee(treasury, ctx);
+    
+    // Transfer fee to treasury
+    transfer::public_transfer(fee_coin, treasury);
+}
+
 /// Release the next tranche to the issuer.
+/// If this is the first tranche, raise fee must be collected first.
 public fun release_tranche(
     self: &Listing,
     tide: &Tide,
@@ -318,6 +353,22 @@ public fun release_tranche(
         amount,
         self.issuer,
     );
+}
+
+/// Convenience function: collect fee and release first tranche in one call.
+/// Only use when releasing the first tranche.
+public fun collect_fee_and_release_tranche(
+    self: &Listing,
+    tide: &Tide,
+    capital_vault: &mut CapitalVault,
+    clock: &Clock,
+    ctx: &mut TxContext,
+) {
+    // Collect fee first (only works before first release)
+    collect_raise_fee(self, tide, capital_vault, ctx);
+    
+    // Then release tranche
+    release_tranche(self, tide, capital_vault, clock, ctx);
 }
 
 // === View Functions ===
@@ -402,6 +453,14 @@ public fun config_tranche_times(config: &ListingConfig): &vector<u64> {
 
 public fun config_revenue_bps(config: &ListingConfig): u64 {
     config.revenue_bps
+}
+
+public fun config_raise_fee_bps(config: &ListingConfig): u64 {
+    config.raise_fee_bps
+}
+
+public fun config_staking_backer_bps(config: &ListingConfig): u64 {
+    config.staking_backer_bps
 }
 
 // === Helper Functions ===

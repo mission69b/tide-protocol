@@ -148,7 +148,82 @@ public fun process_unstake(
     events::emit_unstaked(self.listing_id, amount);
 }
 
-/// Collect staking rewards.
+/// Collect staking rewards and split between backers and treasury.
+/// 
+/// TODO: Implement reward collection from StakedSui
+/// 
+/// Split: 80% to RewardVault (backers), 20% to Treasury
+/// Returns (backer_coin, treasury_coin) for routing.
+public fun collect_and_split_rewards(
+    self: &mut StakingAdapter,
+    ctx: &mut TxContext,
+): (Option<Coin<SUI>>, Option<Coin<SUI>>) {
+    // In full implementation:
+    // 1. Check StakedSui for accumulated rewards
+    // 2. Withdraw rewards portion
+    // 3. Split 80/20
+    
+    // For v1, return none (no actual staking yet)
+    // When implemented:
+    // let total_rewards = ...get from StakedSui...;
+    // let backer_amount = (total_rewards * STAKING_BACKER_BPS) / MAX_BPS;
+    // let treasury_amount = total_rewards - backer_amount;
+    
+    let _ = self;
+    let _ = ctx;
+    
+    (option::none(), option::none())
+}
+
+/// Split a reward amount according to protocol fee policy.
+/// Returns (backer_amount, treasury_amount).
+/// 
+/// Split: 80% backers, 20% treasury
+public fun calculate_reward_split(total_rewards: u64): (u64, u64) {
+    use tide_core::constants;
+    use tide_core::math;
+    
+    let backer_amount = math::mul_div(
+        (total_rewards as u128),
+        (constants::staking_backer_bps!() as u128),
+        (constants::max_bps!() as u128),
+    );
+    let backer_amount_u64 = (backer_amount as u64);
+    let treasury_amount = total_rewards - backer_amount_u64;
+    
+    (backer_amount_u64, treasury_amount)
+}
+
+/// Process staking rewards with split.
+/// Takes raw rewards and returns split coins.
+/// Emits StakingRewardSplit event.
+public fun split_rewards(
+    self: &StakingAdapter,
+    mut rewards_coin: Coin<SUI>,
+    ctx: &mut TxContext,
+): (Coin<SUI>, Coin<SUI>) {
+    use tide_core::constants;
+    
+    let total = rewards_coin.value();
+    let (backer_amount, treasury_amount) = calculate_reward_split(total);
+    
+    // Split the coin
+    let treasury_coin = rewards_coin.split(treasury_amount, ctx);
+    let backer_coin = rewards_coin; // Remaining is backer portion
+    
+    // Emit event
+    events::emit_staking_reward_split(
+        self.listing_id,
+        total,
+        backer_amount,
+        treasury_amount,
+        constants::staking_backer_bps!(),
+    );
+    
+    (backer_coin, treasury_coin)
+}
+
+/// Collect staking rewards (legacy signature for backwards compatibility).
 /// 
 /// TODO: Implement reward collection from StakedSui
 /// Returns coin to be deposited in RewardVault.
@@ -156,11 +231,6 @@ public fun collect_rewards(
     _self: &mut StakingAdapter,
     _ctx: &mut TxContext,
 ): Option<Coin<SUI>> {
-    // In full implementation:
-    // 1. Check StakedSui for accumulated rewards
-    // 2. Withdraw rewards portion
-    // 3. Return as Coin<SUI>
-    
     // For v1, return none (no actual staking)
     option::none()
 }

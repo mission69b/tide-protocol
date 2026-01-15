@@ -66,6 +66,20 @@ This document lists all security invariants that MUST hold for Tide Core v1. Vio
 
 ---
 
+## Fee Invariants
+
+| ID | Invariant | Location |
+|----|-----------|----------|
+| F1 | All fee parameters are immutable per listing | `listing.move`, `capital_vault.move` |
+| F2 | Fees MUST be disclosed in listing config prior to activation | `listing.move` |
+| F3 | Treasury fees MUST NOT affect principal custody or release logic | `capital_vault.move` |
+| F4 | Fee percentages MUST be included in config hash | `listing.move` |
+| F5 | Raise fee (1%) collected exactly once before first release | `capital_vault.move` |
+| F6 | Staking reward split (80/20) is deterministic | `staking_adapter.move` |
+| F7 | No protocol skim on issuer revenue routing | `faith_router.move` |
+
+---
+
 ## Lifecycle Invariants
 
 | ID | Invariant | Location |

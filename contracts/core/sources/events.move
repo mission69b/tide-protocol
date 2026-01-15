@@ -169,3 +169,44 @@ public struct ListingPauseChanged has copy, drop {
 public fun emit_pause_changed(listing_id: ID, paused: bool) {
     emit(ListingPauseChanged { listing_id, paused });
 }
+
+// === Fee Events ===
+
+/// Emitted when raise fee is collected from a listing.
+/// Happens before first tranche release.
+public struct RaiseFeeCollected has copy, drop {
+    listing_id: ID,
+    fee_amount: u64,
+    treasury: address,
+    total_raised: u64,
+    fee_bps: u64,
+}
+
+public fun emit_raise_fee_collected(
+    listing_id: ID,
+    fee_amount: u64,
+    treasury: address,
+    total_raised: u64,
+    fee_bps: u64,
+) {
+    emit(RaiseFeeCollected { listing_id, fee_amount, treasury, total_raised, fee_bps });
+}
+
+/// Emitted when staking rewards are split between backers and treasury.
+public struct StakingRewardSplit has copy, drop {
+    listing_id: ID,
+    total_rewards: u64,
+    backer_amount: u64,
+    treasury_amount: u64,
+    backer_bps: u64,
+}
+
+public fun emit_staking_reward_split(
+    listing_id: ID,
+    total_rewards: u64,
+    backer_amount: u64,
+    treasury_amount: u64,
+    backer_bps: u64,
+) {
+    emit(StakingRewardSplit { listing_id, total_rewards, backer_amount, treasury_amount, backer_bps });
+}

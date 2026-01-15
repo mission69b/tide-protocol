@@ -76,6 +76,9 @@ Modules are ordered by dependency (foundation first):
 | `PRECISION` | u128 | 1_000_000_000_000 | 12 decimal fixed-point |
 | `VERSION` | u64 | 1 | Protocol version |
 | `MAX_BPS` | u64 | 10_000 | Basis points denominator |
+| `RAISE_FEE_BPS` | u64 | 100 | 1% raise fee |
+| `STAKING_BACKER_BPS` | u64 | 8_000 | 80% staking rewards to backers |
+| `STAKING_TREASURY_BPS` | u64 | 2_000 | 20% staking rewards to treasury |
 
 **Tasks:**
 - [x] Define module with constant macros
@@ -135,6 +138,8 @@ Modules are ordered by dependency (foundation first):
 | `Paused` / `Unpaused` | paused_by / unpaused_by | tide |
 | `ListingPauseChanged` | listing_id, paused | listing |
 | `ListingRegistered` | listing_id, listing_number, issuer | registry |
+| `RaiseFeeCollected` | listing_id, fee_amount, treasury, total_raised, fee_bps | capital_vault |
+| `StakingRewardSplit` | listing_id, total_rewards, backer_amount, treasury_amount, backer_bps | staking_adapter |
 
 **Tasks:**
 - [x] Define event structs (past tense naming)

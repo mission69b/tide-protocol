@@ -4,11 +4,13 @@
 /// - Accepts deposits while listing is active
 /// - Tracks total principal and shares
 /// - Releases capital to issuer on deterministic schedule
+/// - Deducts raise fee (1%) before first tranche release
 /// 
 /// Invariants:
 /// - Backers cannot withdraw principal
 /// - Principal only flows to issuer via tranche release
 /// - Principal never enters RewardVault
+/// - Raise fee is immutable and collected exactly once
 module tide_core::capital_vault;
 
 use sui::balance::{Self, Balance};
@@ -18,6 +20,8 @@ use sui::clock::Clock;
 
 use tide_core::errors;
 use tide_core::math;
+use tide_core::constants;
+use tide_core::events;
 
 // === Structs ===
 
@@ -48,6 +52,10 @@ public struct CapitalVault has key {
     tranches: vector<Tranche>,
     /// Index of next tranche to release.
     next_tranche_idx: u64,
+    /// Raise fee in basis points (immutable after creation).
+    raise_fee_bps: u64,
+    /// Whether raise fee has been collected.
+    raise_fee_collected: bool,
 }
 
 // === Package Functions ===
@@ -82,6 +90,8 @@ public(package) fun new(
         issuer,
         tranches,
         next_tranche_idx: 0,
+        raise_fee_bps: constants::raise_fee_bps!(),
+        raise_fee_collected: false,
     }
 }
 
@@ -107,14 +117,60 @@ public(package) fun accept_deposit(
     shares
 }
 
+/// Collect raise fee before first tranche release.
+/// Returns fee coin to be sent to treasury.
+/// Must be called before first release_tranche.
+public(package) fun collect_raise_fee(
+    self: &mut CapitalVault,
+    treasury: address,
+    ctx: &mut TxContext,
+): Coin<SUI> {
+    assert!(!self.raise_fee_collected, errors::already_released());
+    assert!(self.next_tranche_idx == 0, errors::invalid_state()); // Must be before first release
+    
+    // Calculate fee: (total_principal * raise_fee_bps) / MAX_BPS
+    let fee_amount = math::mul_div(
+        (self.total_principal as u128),
+        (self.raise_fee_bps as u128),
+        (constants::max_bps!() as u128),
+    );
+    let fee_amount_u64 = (fee_amount as u64);
+    
+    // Cap fee to available balance
+    let actual_fee = if (fee_amount_u64 > self.balance.value()) {
+        self.balance.value()
+    } else {
+        fee_amount_u64
+    };
+    
+    self.raise_fee_collected = true;
+    
+    // Emit event
+    events::emit_raise_fee_collected(
+        self.listing_id,
+        actual_fee,
+        treasury,
+        self.total_principal,
+        self.raise_fee_bps,
+    );
+    
+    coin::from_balance(self.balance.split(actual_fee), ctx)
+}
+
 /// Release the next tranche to the issuer.
 /// Returns the amount released.
+/// Raise fee must be collected before first release.
 public(package) fun release_tranche(
     self: &mut CapitalVault,
     clock: &Clock,
     ctx: &mut TxContext,
 ): (u64, Coin<SUI>) {
     assert!(self.next_tranche_idx < self.tranches.length(), errors::all_tranches_released());
+    
+    // Ensure raise fee collected before first release
+    if (self.next_tranche_idx == 0) {
+        assert!(self.raise_fee_collected, errors::invalid_state());
+    };
     
     let tranche = &mut self.tranches[self.next_tranche_idx];
     assert!(!tranche.released, errors::already_released());
@@ -199,6 +255,16 @@ public fun next_tranche(self: &CapitalVault): (u64, u64, bool) {
 /// Check if all tranches are released.
 public fun all_released(self: &CapitalVault): bool {
     self.next_tranche_idx >= self.tranches.length()
+}
+
+/// Get raise fee in basis points.
+public fun raise_fee_bps(self: &CapitalVault): u64 {
+    self.raise_fee_bps
+}
+
+/// Check if raise fee has been collected.
+public fun is_raise_fee_collected(self: &CapitalVault): bool {
+    self.raise_fee_collected
 }
 
 // === Share Function ===

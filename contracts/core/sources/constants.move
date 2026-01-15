@@ -14,6 +14,19 @@ public macro fun max_bps(): u64 { 10_000 }
 /// Protocol version for upgrade compatibility.
 public macro fun version(): u64 { 1 }
 
+// === Fee Constants ===
+
+/// Raise fee in basis points (1% = 100 bps).
+/// Deducted from total raised capital before first tranche release.
+public macro fun raise_fee_bps(): u64 { 100 }
+
+/// Staking reward split for backers in basis points (80% = 8000 bps).
+/// Remaining 20% goes to Tide Treasury.
+public macro fun staking_backer_bps(): u64 { 8_000 }
+
+/// Staking reward split for treasury in basis points (20% = 2000 bps).
+public macro fun staking_treasury_bps(): u64 { 2_000 }
+
 // === Lifecycle States ===
 
 /// Listing is in draft mode, config editable, no deposits.
