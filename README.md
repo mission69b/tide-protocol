@@ -21,7 +21,7 @@ Tide enables projects to raise capital **after product-market fit** without sell
 - **Backers** — Contribute SUI, receive a transferable economic position (SupporterPass), claim rewards
 - **Issuer** — Receives released capital on schedule, routes protocol revenue on-chain
 - **Listing Council** — 3-5 key multisig that gates listing creation, activation, and pause
-- **Tide Treasury** — Configured address for future protocol fees (unused in v1)
+- **Tide Treasury** — Receives protocol fees (1% raise fee + 20% of staking rewards)
 
 ### Key Objects
 
@@ -92,9 +92,9 @@ sequenceDiagram
 
 ### Deposit Step-by-Step
 
-1. **Backer calls `deposit()`** with SUI coin
+1. **Backer calls `deposit()`** with SUI coin (minimum 1 SUI)
 2. **Listing validates state** — Must be `Active`, not paused
-3. **CapitalVault accepts deposit** — Adds to total principal
+3. **CapitalVault accepts deposit** — Validates minimum, adds to total principal
 4. **Shares calculated** — `shares = deposit_amount * PRECISION / total_principal_at_deposit`
 5. **SupporterPass minted** — NFT with fixed shares and claim cursor at current index
 6. **Pass transferred to backer** — Fully owned, transferable
@@ -138,6 +138,21 @@ When a SupporterPass is transferred:
 - They can only claim rewards accrued **after** the last claim
 - Previous owner cannot claim again (no longer owns the pass)
 - No coordination or approval needed
+
+## Deterministic Capital Release
+
+Capital is released on a **fixed, immutable schedule** computed at listing finalization:
+
+| Phase | Timing | Amount |
+|-------|--------|--------|
+| Initial | At finalization | 20% of net capital (after 1% fee) |
+| Month 1-12 | 30 days apart | 6.67% each (80% ÷ 12) |
+
+**Key Properties:**
+- **Pull-based** — Anyone can call `release_tranche()` once time passes
+- **Non-discretionary** — Issuer cannot accelerate, delay, or reorder
+- **Immutable** — Schedule locked at finalization
+- **Independent** — Revenue or performance doesn't affect releases
 
 ## Capital Release Flow
 
@@ -231,6 +246,16 @@ Where:
      │                              │                              │ Revenue routing               │ Claims only
 ```
 
+## Fees & Treasury (v1)
+
+| Fee Type | Rate | Destination | Timing |
+|----------|------|-------------|--------|
+| Raise Fee | 1% of total raised | Treasury | Before first tranche release |
+| Staking Split | 20% of staking rewards | Treasury | On reward harvest |
+| Revenue Skim | 0% (no fee) | N/A | N/A |
+
+**Note:** All fee parameters are immutable and disclosed in the listing config hash.
+
 ## Pause Semantics
 
 When paused:
@@ -259,10 +284,11 @@ Tide v1 is intentionally minimal with a **registry-first architecture**:
 | Architecture | Registry-first (future-proof) |
 | Listings | Only FAITH configured & surfaced (Listing #1) |
 | Governance | Minimal council gating (3-5 key multisig) |
-| Raise fees | None |
-| Treasury fees | Configured but unused |
+| Raise Fee | 1% of total raised (collected before first release) |
+| Staking Split | 80% backers / 20% treasury |
+| Min Deposit | 1 SUI per backer |
 | Assets | SUI only |
-| Staking | Native Sui only |
+| Staking | Native Sui only (placeholder in v1) |
 | Marketplace | None |
 | Refunds | None |
 
@@ -302,9 +328,7 @@ tide-protocol/
 │       └── faith_router/        # FAITH revenue adapter
 │           ├── Move.toml
 │           ├── sources/
-│           │   ├── faith_router.move
-│           │   ├── errors.move
-│           │   └── events.move
+│           │   └── faith_router.move
 │           └── tests/
 │
 ├── spec/
@@ -334,6 +358,25 @@ sui move test
 # Build adapter
 cd ../adapters/faith_router
 sui move build
+```
+
+## Deployment
+
+See [DEPLOYMENT.md](./DEPLOYMENT.md) for:
+- Environment strategy (testnet → mainnet)
+- Wallet and multisig setup
+- Step-by-step deployment guide
+- Emergency procedures
+
+Quick start:
+```bash
+# Install deployment scripts
+cd scripts
+npm install
+
+# Deploy to testnet
+export DEPLOYER_PRIVATE_KEY="your_private_key_hex"
+npm run deploy:testnet
 ```
 
 ## License

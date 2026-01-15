@@ -1,0 +1,142 @@
+name: Move CI
+
+on:
+  pull_request:
+    branches: ["main"]
+  push:
+    branches: ["main"]
+
+concurrency:
+  group: move-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Using mainnet release for stability in CI
+  # See: https://github.com/MystenLabs/sui/commits/mainnet-v1.60.1
+  SUI_TAG: mainnet-v1.60.1
+  SUI_TGZ_URL: https://github.com/MystenLabs/sui/releases/download/mainnet-v1.60.1/sui-mainnet-v1.60.1-ubuntu-x86_64.tgz
+  SUI_BIN_DIR: ${{ github.workspace }}/.sui-bin
+
+jobs:
+  move-test:
+    name: sui move test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Cache Sui CLI + Move cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ env.SUI_BIN_DIR }}
+            ~/.move
+          key: ${{ runner.os }}-${{ env.SUI_TAG }}-move-${{ hashFiles('contracts/**/Move.toml', 'contracts/**/sources/**') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ env.SUI_TAG }}-move-
+
+      - name: Install Sui CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "${SUI_BIN_DIR}"
+
+          # If sui already extracted in cache, use it
+          if [ -x "${SUI_BIN_DIR}/sui" ]; then
+            echo "Sui already cached at ${SUI_BIN_DIR}/sui"
+          else
+            curl -fsSL "${SUI_TGZ_URL}" -o /tmp/sui.tgz
+            tar -xzf /tmp/sui.tgz -C "${SUI_BIN_DIR}"
+          fi
+
+          echo "Contents of ${SUI_BIN_DIR}:"
+          ls -la "${SUI_BIN_DIR}"
+
+          # Find the sui binary (handles nested layouts too)
+          SUI_PATH="$(find "${SUI_BIN_DIR}" -type f -name sui -perm -u+x | head -n 1 || true)"
+          if [ -z "${SUI_PATH}" ]; then
+            echo "ERROR: sui binary not found after extracting ${SUI_TGZ_URL}"
+            find "${SUI_BIN_DIR}" -maxdepth 3 -print
+            exit 1
+          fi
+
+          SUI_DIR="$(dirname "${SUI_PATH}")"
+          chmod +x "${SUI_PATH}"
+
+          # PATH for subsequent steps
+          echo "${SUI_DIR}" >> "${GITHUB_PATH}"
+          # PATH for this step (GITHUB_PATH not active until next step)
+          export PATH="${SUI_DIR}:${PATH}"
+
+          which sui
+          sui --version
+
+      - name: Test tide_core
+        shell: bash
+        working-directory: contracts/core
+        run: |
+          set -euo pipefail
+          sui move test
+
+  move-build:
+    name: sui move build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: [move-test]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Cache Sui CLI + Move cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ env.SUI_BIN_DIR }}
+            ~/.move
+          key: ${{ runner.os }}-${{ env.SUI_TAG }}-move-${{ hashFiles('contracts/**/Move.toml', 'contracts/**/sources/**') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ env.SUI_TAG }}-move-
+
+      - name: Install Sui CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "${SUI_BIN_DIR}"
+
+          if [ -x "${SUI_BIN_DIR}/sui" ]; then
+            echo "Sui already cached at ${SUI_BIN_DIR}/sui"
+          else
+            curl -fsSL "${SUI_TGZ_URL}" -o /tmp/sui.tgz
+            tar -xzf /tmp/sui.tgz -C "${SUI_BIN_DIR}"
+          fi
+
+          SUI_PATH="$(find "${SUI_BIN_DIR}" -type f -name sui -perm -u+x | head -n 1 || true)"
+          if [ -z "${SUI_PATH}" ]; then
+            echo "ERROR: sui binary not found"
+            find "${SUI_BIN_DIR}" -maxdepth 3 -print
+            exit 1
+          fi
+
+          SUI_DIR="$(dirname "${SUI_PATH}")"
+          chmod +x "${SUI_PATH}"
+          echo "${SUI_DIR}" >> "${GITHUB_PATH}"
+          export PATH="${SUI_DIR}:${PATH}"
+
+          sui --version
+
+      - name: Build tide_core
+        shell: bash
+        working-directory: contracts/core
+        run: |
+          set -euo pipefail
+          sui move build
+
+      - name: Build faith_router
+        shell: bash
+        working-directory: contracts/adapters/faith_router
+        run: |
+          set -euo pipefail
+          sui move build

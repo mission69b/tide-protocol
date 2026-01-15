@@ -8,5 +8,22 @@ coverage
 .DS_Store
 build/
 move
+
+# Move build artifacts
 contracts/core/build/
 contracts/adapters/faith_router/build/
+
+# Scripts
+scripts/node_modules/
+scripts/dist/
+
+# Deployment artifacts (keep .gitkeep)
+deployments/testnet/*.json
+deployments/mainnet/*.json
+
+# Sui
+.sui/
+Move.lock
+
+# Local wallet reference (may contain sensitive info)
+.wallet-reference.md

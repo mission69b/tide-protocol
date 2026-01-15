@@ -494,6 +494,7 @@ tide-protocol/
 │   │   │   ├── staking_adapter.move  # Native Sui staking
 │   │   │   ├── supporter_pass.move   # Backer NFT (economics)
 │   │   │   ├── display.move          # Display metadata
+│   │   │   ├── admin.move            # Capability-gated admin
 │   │   │   ├── math.move             # Fixed-point arithmetic
 │   │   │   ├── constants.move        # Shared constants
 │   │   │   ├── errors.move           # Error codes
