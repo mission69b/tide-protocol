@@ -41,7 +41,7 @@ public struct ListingCap has key, store {
 
 /// Configuration parameters for a listing.
 /// Used to compute the config hash.
-/// All fee parameters are disclosed here for transparency.
+/// All fee and limit parameters are disclosed here for transparency.
 public struct ListingConfig has copy, drop, store {
     /// Issuer address.
     issuer: address,
@@ -59,6 +59,8 @@ public struct ListingConfig has copy, drop, store {
     /// Staking reward split for backers in BPS (80% = 8000).
     /// Remaining goes to treasury.
     staking_backer_bps: u64,
+    /// Minimum deposit amount in MIST (anti-spam).
+    min_deposit: u64,
 }
 
 /// Main listing object orchestrating the capital raise.
@@ -96,16 +98,17 @@ public fun new(
     revenue_bps: u64,
     ctx: &mut TxContext,
 ): (Listing, CapitalVault, RewardVault, StakingAdapter, ListingCap, RouteCapability) {
-    // Create config with fee disclosure
+    // Create config with fee and limit disclosure
     let config = ListingConfig {
         issuer,
         validator,
         tranche_amounts: tranche_amounts,
         tranche_times: tranche_times,
         revenue_bps,
-        // Fee parameters from protocol constants (disclosed in config hash)
+        // Fee and limit parameters from protocol constants (disclosed in config hash)
         raise_fee_bps: constants::raise_fee_bps!(),
         staking_backer_bps: constants::staking_backer_bps!(),
+        min_deposit: constants::min_deposit!(),
     };
     let config_hash = compute_config_hash(&config);
     
@@ -535,6 +538,10 @@ public fun config_raise_fee_bps(config: &ListingConfig): u64 {
 
 public fun config_staking_backer_bps(config: &ListingConfig): u64 {
     config.staking_backer_bps
+}
+
+public fun config_min_deposit(config: &ListingConfig): u64 {
+    config.min_deposit
 }
 
 // === Helper Functions ===

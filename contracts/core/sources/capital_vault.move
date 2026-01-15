@@ -67,6 +67,8 @@ public struct CapitalVault has key {
     schedule_finalized: bool,
     /// Timestamp when schedule was finalized.
     finalization_time: u64,
+    /// Minimum deposit amount (anti-spam).
+    min_deposit: u64,
 }
 
 // === Package Functions ===
@@ -105,6 +107,7 @@ public(package) fun new(
         raise_fee_collected: false,
         schedule_finalized: false,
         finalization_time: 0,
+        min_deposit: constants::min_deposit!(),
     }
 }
 
@@ -128,6 +131,7 @@ public(package) fun new_with_deferred_schedule(
         raise_fee_collected: false,
         schedule_finalized: false,
         finalization_time: 0,
+        min_deposit: constants::min_deposit!(),
     }
 }
 
@@ -198,12 +202,14 @@ public(package) fun finalize_schedule(
 
 /// Accept a deposit and calculate shares.
 /// Returns the shares minted for this deposit.
+/// Enforces minimum deposit amount (1 SUI) to prevent spam.
 public(package) fun accept_deposit(
     self: &mut CapitalVault,
     coin: Coin<SUI>,
 ): u128 {
     let amount = coin.value();
     assert!(amount > 0, errors::invalid_amount());
+    assert!(amount >= self.min_deposit, errors::below_minimum());
     
     // Calculate shares before updating state
     let shares = math::to_shares(amount, self.total_principal, self.total_shares);
@@ -475,6 +481,11 @@ public fun raise_fee_bps(self: &CapitalVault): u64 {
 /// Check if raise fee has been collected.
 public fun is_raise_fee_collected(self: &CapitalVault): bool {
     self.raise_fee_collected
+}
+
+/// Get minimum deposit amount.
+public fun min_deposit(self: &CapitalVault): u64 {
+    self.min_deposit
 }
 
 // === Share Function ===

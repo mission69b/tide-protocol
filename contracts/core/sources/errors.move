@@ -46,6 +46,9 @@ const EVersionMismatch: vector<u8> = b"Version mismatch";
 #[error]
 const EAllTranchesReleased: vector<u8> = b"All tranches already released";
 
+#[error]
+const EBelowMinimum: vector<u8> = b"Deposit amount below minimum (1 SUI)";
+
 // === Public Functions (for cross-package use) ===
 
 public fun not_active(): u64 { 0 }
@@ -62,4 +65,5 @@ public fun wrong_listing(): u64 { 10 }
 public fun not_draft(): u64 { 11 }
 public fun version_mismatch(): u64 { 12 }
 public fun all_tranches_released(): u64 { 13 }
+public fun below_minimum(): u64 { 14 }
 

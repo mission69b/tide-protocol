@@ -45,6 +45,12 @@ public macro fun tranche_interval_ms(): u64 { 2_592_000_000 }
 /// Total schedule duration in months.
 public macro fun schedule_duration_months(): u64 { 12 }
 
+// === Deposit Limits ===
+
+/// Minimum deposit amount in MIST (1 SUI = 1,000,000,000 MIST).
+/// Prevents spam attacks and dust deposits.
+public macro fun min_deposit(): u64 { 1_000_000_000 }
+
 // === Lifecycle States ===
 
 /// Listing is in draft mode, config editable, no deposits.
