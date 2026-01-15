@@ -6,6 +6,40 @@ This document maps the specification 1:1 to Move module files with a detailed ta
 
 ---
 
+## Architecture Overview
+
+Tide v1 uses a **registry-first architecture** with **minimal council gating**:
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                          Tide (Global Config)                       │
+│                     treasury, global_pause, version                  │
+└─────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                         ListingRegistry                              │
+│               listing_count, listings[], council-gated               │
+└─────────────────────────────────────────────────────────────────────┘
+                                    │
+                    ┌───────────────┼───────────────┐
+                    ▼               ▼               ▼
+              ┌─────────┐     ┌─────────┐     ┌─────────┐
+              │Listing 1│     │Listing 2│     │Listing N│
+              │ (FAITH) │     │ (future)│     │ (future)│
+              └────┬────┘     └────┬────┘     └────┬────┘
+                   │               │               │
+        ┌──────────┼──────────┐    :               :
+        ▼          ▼          ▼
+  ┌───────────┐ ┌───────────┐ ┌───────────┐
+  │CapitalVault│ │RewardVault│ │StakingAdapter│
+  └───────────┘ └───────────┘ └───────────┘
+```
+
+**v1 Constraint:** Only FAITH (Listing #1) is configured and surfaced.
+
+---
+
 ## Implementation Order
 
 Modules are ordered by dependency (foundation first):
@@ -16,12 +50,15 @@ Modules are ordered by dependency (foundation first):
 3. events.move        ─┘
 4. math.move          ── Utilities
 5. tide.move          ── Global config
-6. supporter_pass.move── Backer position (depends on math)
-7. reward_vault.move  ── Reward distribution (depends on math, events)
-8. capital_vault.move ── Principal custody (depends on math, events)
-9. staking_adapter.move ── Staking (depends on capital_vault)
-10. listing.move      ── Orchestration (depends on all vaults)
-11. admin.move        ── Admin actions (depends on all)
+6. council.move       ── Council capability (NEW)
+7. registry.move      ── Listing registry (NEW)
+8. supporter_pass.move── Backer position
+9. display.move       ── Display metadata
+10. reward_vault.move  ── Reward distribution
+11. capital_vault.move ── Principal custody
+12. staking_adapter.move ── Staking
+13. listing.move       ── Orchestration (depends on all vaults)
+14. admin.move         ── Admin/convenience actions
 ```
 
 ---
@@ -41,9 +78,9 @@ Modules are ordered by dependency (foundation first):
 | `MAX_BPS` | u64 | 10_000 | Basis points denominator |
 
 **Tasks:**
-- [ ] Define module with constant macros
-- [ ] Export precision for share calculations
-- [ ] Export version for upgrade checks
+- [x] Define module with constant macros
+- [x] Export precision for share calculations
+- [x] Export version for upgrade checks
 
 **Estimated complexity:** Low
 
@@ -53,14 +90,14 @@ Modules are ordered by dependency (foundation first):
 
 **File:** `contracts/core/sources/errors.move`
 
-**Purpose:** Canonical error codes with `public(package) macro fun` pattern.
+**Purpose:** Canonical error codes with `public fun` pattern.
 
 | Error | Code | Description |
 |-------|------|-------------|
 | `not_active` | 0 | Listing not in Active state |
-| `paused` | 1 | Protocol is paused |
+| `paused` | 1 | Protocol/listing is paused |
 | `invalid_amount` | 2 | Zero or invalid deposit amount |
-| `already_claimed` | 3 | No rewards to claim |
+| `nothing_to_claim` | 3 | No rewards to claim |
 | `not_authorized` | 4 | Caller lacks capability |
 | `invalid_state` | 5 | Invalid state transition |
 | `tranche_not_ready` | 6 | Tranche not yet releasable |
@@ -68,11 +105,12 @@ Modules are ordered by dependency (foundation first):
 | `insufficient_balance` | 8 | Vault balance too low |
 | `staking_locked` | 9 | Cannot unstake yet |
 | `wrong_listing` | 10 | Pass doesn't belong to listing |
+| `not_draft` | 11 | Listing not in Draft state |
 
 **Tasks:**
-- [ ] Define error module
-- [ ] Create macro for each error
-- [ ] Add `#[test_only]` constants for testing
+- [x] Define error module
+- [x] Create public function for each error
+- [x] Add `#[test_only]` constants for testing
 
 **Estimated complexity:** Low
 
@@ -87,20 +125,21 @@ Modules are ordered by dependency (foundation first):
 | Event | Fields | Emitter |
 |-------|--------|---------|
 | `Deposited` | listing_id, backer, amount, shares, pass_id | listing |
-| `Claimed` | listing_id, pass_id, amount | listing |
+| `Claimed` | listing_id, pass_id, backer, amount | listing |
 | `TrancheReleased` | listing_id, tranche_idx, amount, recipient | listing |
 | `RouteIn` | listing_id, source, amount | reward_vault |
 | `RewardIndexUpdated` | listing_id, old_index, new_index | reward_vault |
 | `Staked` | listing_id, amount, validator | staking_adapter |
 | `Unstaked` | listing_id, amount | staking_adapter |
 | `StateChanged` | listing_id, old_state, new_state | listing |
-| `Paused` | paused_by | tide |
-| `Unpaused` | unpaused_by | tide |
+| `Paused` / `Unpaused` | paused_by / unpaused_by | tide |
+| `ListingPauseChanged` | listing_id, paused | listing |
+| `ListingRegistered` | listing_id, listing_number, issuer | registry |
 
 **Tasks:**
-- [ ] Define event structs (past tense naming)
-- [ ] Add `copy, drop` abilities
-- [ ] Document each event
+- [x] Define event structs (past tense naming)
+- [x] Add `copy, drop` abilities
+- [x] Document each event
 
 **Estimated complexity:** Low
 
@@ -119,10 +158,10 @@ Modules are ordered by dependency (foundation first):
 | Function | Signature | Description |
 |----------|-----------|-------------|
 | `mul_div` | `(a: u128, b: u128, c: u128): u128` | (a × b) / c with overflow protection |
-| `mul_div_down` | `(a: u128, b: u128, c: u128): u128` | Floor division |
 | `mul_div_up` | `(a: u128, b: u128, c: u128): u128` | Ceiling division |
-| `to_shares` | `(amount: u64, total_supply: u64, total_shares: u128): u128` | Convert deposit to shares |
-| `to_amount` | `(shares: u128, total_supply: u64, total_shares: u128): u64` | Convert shares to amount |
+| `to_shares` | `(amount: u64, precision: u128): u128` | Convert deposit to shares |
+| `calculate_claimable` | `(shares, global_index, pass_index, precision)` | Calculate rewards |
+| `calculate_new_index` | `(amount, total_shares, precision)` | Index delta |
 
 **Invariants:**
 - Rounding MUST be deterministic
@@ -130,16 +169,16 @@ Modules are ordered by dependency (foundation first):
 - Division by zero MUST abort
 
 **Tasks:**
-- [ ] Implement `mul_div` variants
-- [ ] Implement share conversion functions
-- [ ] Add overflow checks
-- [ ] Write unit tests for edge cases (0, max, overflow)
+- [x] Implement `mul_div` variants
+- [x] Implement share conversion functions
+- [x] Add overflow checks
+- [x] Write unit tests for edge cases
 
 **Estimated complexity:** Medium
 
 ---
 
-## Phase 3: Global Config
+## Phase 3: Global Config & Governance
 
 ### Task 3.1: `tide.move`
 
@@ -147,7 +186,7 @@ Modules are ordered by dependency (foundation first):
 
 **Purpose:** Global protocol configuration (shared singleton).
 
-**Struct: `Tide`**
+**Structs:**
 
 ```move
 public struct Tide has key {
@@ -156,11 +195,7 @@ public struct Tide has key {
     paused: bool,
     version: u64,
 }
-```
 
-**Struct: `AdminCap`**
-
-```move
 public struct AdminCap has key, store {
     id: UID,
 }
@@ -174,8 +209,7 @@ public struct AdminCap has key, store {
 | `pause` | public | Set paused = true (requires AdminCap) |
 | `unpause` | public | Set paused = false (requires AdminCap) |
 | `is_paused` | public | View paused state |
-| `treasury` | public | View treasury address |
-| `version` | public | View version |
+| `assert_not_paused` | public | Abort if paused |
 
 **Invariants:**
 - Tide holds no capital
@@ -183,10 +217,99 @@ public struct AdminCap has key, store {
 - Single instance (created in init)
 
 **Tasks:**
-- [ ] Define structs
-- [ ] Implement init with OTW
-- [ ] Implement pause/unpause with AdminCap
-- [ ] Add getters
+- [x] Define structs
+- [x] Implement init with OTW
+- [x] Implement pause/unpause with AdminCap
+- [x] Add getters
+- [ ] Write tests
+
+**Estimated complexity:** Low
+
+---
+
+### Task 3.2: `council.move` (NEW)
+
+**File:** `contracts/core/sources/council.move`
+
+**Purpose:** Council capability for registry-first architecture.
+
+**Structs:**
+
+```move
+public struct CouncilCap has key, store {
+    id: UID,
+}
+
+public struct CouncilConfig has key {
+    id: UID,
+    threshold: u64,  // Documentation only (multisig enforces)
+    members: u64,
+    version: u64,
+}
+```
+
+**Functions:**
+
+| Function | Visibility | Description |
+|----------|------------|-------------|
+| `init` | internal | Create CouncilCap + CouncilConfig |
+| `transfer_cap` | public | Transfer cap to multisig |
+| `threshold` | public | Get threshold |
+| `members` | public | Get member count |
+
+**Council MAY:**
+- Create/register new listings
+- Activate or finalize listings
+- Pause or resume listings
+
+**Council MUST NOT:**
+- Seize capital
+- Redirect rewards
+- Change live economics after activation
+
+**Tasks:**
+- [x] Define structs
+- [x] Implement init
+- [x] Implement transfer
+- [ ] Write tests
+
+**Estimated complexity:** Low
+
+---
+
+### Task 3.3: `registry.move` (NEW)
+
+**File:** `contracts/core/sources/registry.move`
+
+**Purpose:** Registry of all listings with council gating.
+
+**Struct:**
+
+```move
+public struct ListingRegistry has key {
+    id: UID,
+    listing_count: u64,
+    listings: vector<ID>,
+    version: u64,
+}
+```
+
+**Functions:**
+
+| Function | Visibility | Description |
+|----------|------------|-------------|
+| `init` | internal | Create registry |
+| `register_listing` | public | Register listing (requires CouncilCap) |
+| `listing_count` | public | Get count |
+| `listing_at` | public | Get listing by index |
+| `is_registered` | public | Check if registered |
+
+**Invariant:** Registry holds no capital and cannot redirect funds.
+
+**Tasks:**
+- [x] Define structs
+- [x] Implement init
+- [x] Implement council-gated registration
 - [ ] Write tests
 
 **Estimated complexity:** Low
@@ -199,46 +322,61 @@ public struct AdminCap has key, store {
 
 **File:** `contracts/core/sources/supporter_pass.move`
 
-**Purpose:** Transferable NFT representing backer's economic position.
+**Purpose:** Transferable NFT representing backer's economic position (economics only).
 
-**Struct: `SupporterPass`**
+**Struct:**
 
 ```move
 public struct SupporterPass has key, store {
     id: UID,
     listing_id: ID,
-    shares: u128,          // Fixed at deposit, immutable
-    claim_index: u128,     // Last claimed reward index
-    deposited_amount: u64, // Original deposit (for display)
-    deposited_at: u64,     // Timestamp (for display)
+    shares: u128,        // Fixed at deposit, immutable
+    claim_index: u128,   // Last claimed reward index
+    created_epoch: u64,  // When minted (non-economic)
 }
 ```
 
-**Functions:**
-
-| Function | Visibility | Description |
-|----------|------------|-------------|
-| `mint` | package | Create new pass with shares |
-| `shares` | public | Get share amount |
-| `claim_index` | public | Get current claim index |
-| `listing_id` | public | Get associated listing |
-| `update_claim_index` | package | Set new claim index after claim |
-| `deposited_amount` | public | Get original deposit |
-
-**Invariants:**
-- Shares are immutable after mint
+**Normative Rules:**
+- Shares are immutable after mint and MUST be > 0
 - Claim index only increases
 - Ownership = full entitlement
+- MUST NOT store balances or custody funds
+- MUST NOT call sui::display
 
 **Tasks:**
-- [ ] Define struct with correct abilities
-- [ ] Implement package-visibility mint
-- [ ] Implement getters
-- [ ] Implement claim index update
-- [ ] Add Display support (optional)
+- [x] Define struct with correct abilities
+- [x] Implement package-visibility mint
+- [x] Implement getters
+- [x] Implement claim index update
 - [ ] Write transfer safety tests
 
-**Estimated complexity:** Low-Medium
+**Estimated complexity:** Low
+
+---
+
+### Task 4.2: `display.move`
+
+**File:** `contracts/core/sources/display.move`
+
+**Purpose:** Display configuration for SupporterPass using `sui::display`.
+
+**Display Fields:**
+- `name`: "Tide Supporter Pass #{id}"
+- `description`: Economic position description
+- `image_url`: Off-chain renderer URL with `{id}` placeholder
+- `link`: Detail page URL
+
+**Normative Rules:**
+- Display MUST NOT affect reward calculations
+- Display can point to off-chain renderers
+
+**Tasks:**
+- [x] Define display setup function
+- [x] Configure default display fields
+- [x] Add update functions
+- [ ] Document off-chain renderer API
+
+**Estimated complexity:** Low
 
 ---
 
@@ -250,37 +388,23 @@ public struct SupporterPass has key, store {
 
 **Purpose:** Hold rewards and maintain cumulative distribution index.
 
-**Struct: `RewardVault`**
+**Structs:**
 
 ```move
 public struct RewardVault has key {
     id: UID,
     listing_id: ID,
     balance: Balance<SUI>,
-    global_index: u128,    // Cumulative reward-per-share
-    total_distributed: u64, // Lifetime distributed
+    global_index: u128,
+    total_shares: u128,
+    total_distributed: u64,
 }
-```
 
-**Struct: `RouteCapability`**
-
-```move
 public struct RouteCapability has key, store {
     id: UID,
     listing_id: ID,
 }
 ```
-
-**Functions:**
-
-| Function | Visibility | Description |
-|----------|------------|-------------|
-| `new` | package | Create vault for listing |
-| `deposit_rewards` | public | Add rewards, update index (requires RouteCapability) |
-| `withdraw` | package | Withdraw for claim |
-| `global_index` | public | Get current index |
-| `balance` | public | Get current balance |
-| `calculate_claimable` | public | Compute claimable for shares + index |
 
 **Invariants:**
 - Index is monotonically non-decreasing
@@ -288,13 +412,12 @@ public struct RouteCapability has key, store {
 - Principal never enters
 
 **Tasks:**
-- [ ] Define structs
-- [ ] Implement deposit with index update
-- [ ] Implement withdraw
-- [ ] Implement claimable calculation
-- [ ] Add RouteCapability pattern
+- [x] Define structs
+- [x] Implement deposit with index update
+- [x] Implement withdraw
+- [x] Implement claimable calculation
+- [x] Add RouteCapability pattern
 - [ ] Write index monotonicity tests
-- [ ] Write no-principal-entry tests
 
 **Estimated complexity:** Medium
 
@@ -306,23 +429,20 @@ public struct RouteCapability has key, store {
 
 **Purpose:** Hold contributed principal, manage tranche releases.
 
-**Struct: `CapitalVault`**
+**Structs:**
 
 ```move
 public struct CapitalVault has key {
     id: UID,
     listing_id: ID,
+    issuer: address,
     balance: Balance<SUI>,
     total_principal: u64,
     total_shares: u128,
     tranches: vector<Tranche>,
     next_tranche_idx: u64,
 }
-```
 
-**Struct: `Tranche`**
-
-```move
 public struct Tranche has store, copy, drop {
     amount: u64,
     release_time: u64,
@@ -330,31 +450,17 @@ public struct Tranche has store, copy, drop {
 }
 ```
 
-**Functions:**
-
-| Function | Visibility | Description |
-|----------|------------|-------------|
-| `new` | package | Create vault with release schedule |
-| `accept_deposit` | package | Accept SUI, calculate shares |
-| `release_tranche` | package | Release next tranche to issuer |
-| `total_principal` | public | Get total deposited |
-| `total_shares` | public | Get total shares minted |
-| `is_tranche_ready` | public | Check if tranche is releasable |
-| `next_tranche` | public | Get next unreleased tranche |
-
 **Invariants:**
 - Principal only flows to issuer
 - No backer withdrawals
 - Released tranches cannot re-release
 
 **Tasks:**
-- [ ] Define structs
-- [ ] Implement deposit flow
-- [ ] Implement share calculation
-- [ ] Implement tranche release
-- [ ] Add release schedule validation
+- [x] Define structs
+- [x] Implement deposit flow
+- [x] Implement share calculation
+- [x] Implement tranche release
 - [ ] Write principal isolation tests
-- [ ] Write tranche release tests
 
 **Estimated complexity:** High
 
@@ -368,47 +474,17 @@ public struct Tranche has store, copy, drop {
 
 **Purpose:** Native Sui staking for locked capital.
 
-**Struct: `StakingAdapter`**
-
-```move
-public struct StakingAdapter has key {
-    id: UID,
-    listing_id: ID,
-    staked_sui: Option<StakedSui>,
-    pending_unstake: u64,
-    validator: address,
-}
-```
-
-**Functions:**
-
-| Function | Visibility | Description |
-|----------|------------|-------------|
-| `new` | package | Create adapter with validator |
-| `stake` | package | Stake available capital |
-| `request_unstake` | package | Request withdrawal |
-| `withdraw_staked` | package | Withdraw after epoch |
-| `collect_rewards` | package | Harvest staking rewards to RewardVault |
-| `staked_amount` | public | Get currently staked |
-
 **Invariants:**
 - Only locked capital staked
 - Rewards flow to RewardVault
 - Priority: unstake before release
 
-**Sui System Integration:**
-- Uses `sui_system::request_add_stake`
-- Uses `sui_system::request_withdraw_stake`
-- Epoch-aware timing
-
 **Tasks:**
-- [ ] Define structs
+- [x] Define structs
 - [ ] Implement stake flow
 - [ ] Implement unstake request
-- [ ] Implement epoch-aware withdrawal
 - [ ] Implement reward collection
-- [ ] Handle priority rule (unstake before release)
-- [ ] Write staking integration tests
+- [ ] Handle priority rule
 
 **Estimated complexity:** High
 
@@ -422,32 +498,27 @@ public struct StakingAdapter has key {
 
 **Purpose:** Listing lifecycle and orchestration of all vaults.
 
-**Struct: `Listing`**
+**Struct:**
 
 ```move
 public struct Listing has key {
     id: UID,
+    listing_number: u64,
     issuer: address,
-    capital_vault_id: ID,
-    reward_vault_id: ID,
-    staking_adapter_id: ID,
-    state: u8,  // 0=Draft, 1=Active, 2=Finalized, 3=Completed
+    state: u8,
     config_hash: vector<u8>,
+    config: ListingConfig,
     activation_time: u64,
-    // Release schedule params
-    num_tranches: u64,
-    tranche_interval: u64,
-    // Stats
     total_backers: u64,
+    paused: bool,
 }
-```
 
-**Struct: `ListingCap`**
-
-```move
-public struct ListingCap has key, store {
-    id: UID,
-    listing_id: ID,
+public struct ListingConfig has copy, drop, store {
+    issuer: address,
+    validator: address,
+    tranche_amounts: vector<u64>,
+    tranche_times: vector<u64>,
+    revenue_bps: u64,
 }
 ```
 
@@ -455,39 +526,26 @@ public struct ListingCap has key, store {
 
 | State | Value | Allowed Actions |
 |-------|-------|-----------------|
-| Draft | 0 | Configure, activate |
+| Draft | 0 | Configure, activate (council) |
 | Active | 1 | Deposit, stake, route revenue |
 | Finalized | 2 | Release, claim, route revenue |
 | Completed | 3 | Claim only |
 
-**Functions:**
-
-| Function | Visibility | Description |
-|----------|------------|-------------|
-| `new` | public | Create draft listing |
-| `activate` | public | Transition to Active (requires ListingCap) |
-| `finalize` | public | Transition to Finalized |
-| `complete` | public | Transition to Completed |
-| `deposit` | public | Accept backer deposit |
-| `claim` | public | Claim rewards for pass |
-| `release_tranche` | public | Release capital to issuer |
-| `state` | public | Get current state |
-| `issuer` | public | Get issuer address |
-
-**Invariants:**
-- State transitions are unidirectional
-- Config immutable after activation
-- Deposits only in Active state
+**Council-Gated Operations:**
+- `new` (create listing via registry)
+- `activate` (enable deposits)
+- `finalize` (stop deposits)
+- `complete` (after all tranches)
+- `pause` / `resume`
 
 **Tasks:**
-- [ ] Define structs and state constants
-- [ ] Implement lifecycle transitions
-- [ ] Implement deposit orchestration
-- [ ] Implement claim orchestration
-- [ ] Implement release orchestration
-- [ ] Emit all events
+- [x] Define structs and state constants
+- [x] Implement council-gated creation
+- [x] Implement lifecycle transitions
+- [x] Implement per-listing pause
+- [x] Implement config hash
+- [x] Implement deposit/claim/release
 - [ ] Write state machine tests
-- [ ] Write full deposit→claim flow tests
 
 **Estimated complexity:** High
 
@@ -499,24 +557,24 @@ public struct ListingCap has key, store {
 
 **File:** `contracts/core/sources/admin.move`
 
-**Purpose:** Capability-gated admin actions.
+**Purpose:** Convenience wrappers for admin actions.
 
 **Functions:**
 
 | Function | Visibility | Description |
 |----------|------------|-------------|
-| `create_listing` | public | Create new listing (requires AdminCap) |
-| `issue_route_capability` | public | Issue RouteCapability to adapter |
-| `emergency_pause` | public | Pause protocol |
-| `resume` | public | Resume protocol |
+| `pause_protocol` | public | Global pause (AdminCap) |
+| `unpause_protocol` | public | Global unpause (AdminCap) |
+| `create_listing` | public | Create listing (CouncilCap) |
+| `pause_listing` | public | Pause listing (CouncilCap) |
+| `resume_listing` | public | Resume listing (CouncilCap) |
 
 **Tasks:**
-- [ ] Implement listing creation
-- [ ] Implement capability issuance
-- [ ] Implement pause/resume wrappers
+- [x] Implement global pause wrappers
+- [x] Implement council wrappers
 - [ ] Write access control tests
 
-**Estimated complexity:** Medium
+**Estimated complexity:** Low
 
 ---
 
@@ -528,36 +586,14 @@ public struct ListingCap has key, store {
 
 **Purpose:** FAITH-specific revenue routing adapter.
 
-**Struct: `FaithRouter`**
-
-```move
-public struct FaithRouter has key {
-    id: UID,
-    listing_id: ID,
-    revenue_bps: u64,      // e.g., 1000 = 10%
-    total_routed: u64,
-    route_cap: RouteCapability,
-}
-```
-
-**Functions:**
-
-| Function | Visibility | Description |
-|----------|------------|-------------|
-| `new` | public | Create router with RouteCapability |
-| `route` | public | Route SUI to RewardVault |
-| `revenue_bps` | public | Get routing percentage |
-| `total_routed` | public | Get lifetime routed |
-
 **Invariants:**
 - Revenue percentage immutable
 - Routes only to RewardVault
 - Emits RouteIn events
 
 **Tasks:**
-- [ ] Define structs
-- [ ] Implement route function
-- [ ] Emit standardized events
+- [x] Define structs
+- [x] Implement route function
 - [ ] Write routing tests
 
 **Estimated complexity:** Medium
@@ -575,18 +611,18 @@ public struct FaithRouter has key {
 | Scenario | Description |
 |----------|-------------|
 | Full lifecycle | Draft → Active → deposit → route → claim → release → complete |
+| Council gating | Verify only council can create/activate/pause |
 | Multi-backer | Multiple backers, fair reward distribution |
 | Transfer claim | Transfer pass, new owner claims |
 | Late joiner | Deposit after rewards, no pre-deposit claim |
-| Tranche release | All tranches release correctly |
-| Pause/resume | System pauses and resumes correctly |
+| Per-listing pause | Pause one listing, others unaffected |
 
 **Tasks:**
 - [ ] Implement lifecycle test
+- [ ] Implement council gating tests
 - [ ] Implement multi-backer test
 - [ ] Implement transfer test
 - [ ] Implement late joiner test
-- [ ] Implement release test
 - [ ] Implement pause test
 
 **Estimated complexity:** High
@@ -596,24 +632,27 @@ public struct FaithRouter has key {
 ## Implementation Checklist
 
 ### Foundation (Week 1)
-- [ ] 1.1 constants.move
-- [ ] 1.2 errors.move
-- [ ] 1.3 events.move
-- [ ] 2.1 math.move
-- [ ] 3.1 tide.move
+- [x] 1.1 constants.move
+- [x] 1.2 errors.move
+- [x] 1.3 events.move
+- [x] 2.1 math.move
+- [x] 3.1 tide.move
+- [x] 3.2 council.move (NEW)
+- [x] 3.3 registry.move (NEW)
 
 ### Core (Week 2)
-- [ ] 4.1 supporter_pass.move
-- [ ] 5.1 reward_vault.move
-- [ ] 5.2 capital_vault.move
+- [x] 4.1 supporter_pass.move
+- [x] 4.2 display.move
+- [x] 5.1 reward_vault.move
+- [x] 5.2 capital_vault.move
 
 ### Integration (Week 3)
-- [ ] 6.1 staking_adapter.move
-- [ ] 7.1 listing.move
-- [ ] 8.1 admin.move
+- [x] 6.1 staking_adapter.move
+- [x] 7.1 listing.move (updated for registry)
+- [x] 8.1 admin.move (updated for council)
 
 ### Adapter + Testing (Week 4)
-- [ ] 9.1 faith_router.move
+- [x] 9.1 faith_router.move
 - [ ] 10.1 e2e_tests.move
 - [ ] Security review
 - [ ] Documentation review
@@ -624,9 +663,10 @@ public struct FaithRouter has key {
 
 | Risk | Mitigation |
 |------|------------|
-| Fixed-point overflow | Use u128, add overflow checks in math.move |
+| Fixed-point overflow | Use u128/u256, add overflow checks in math.move |
 | Staking epoch timing | Document epoch delays, add pending state |
 | Reward index precision | 12 decimal precision (1e12) |
+| Council key compromise | 3-5 multisig, hardware wallets |
 | Reentrancy | No callbacks, linear execution |
 | Upgrade safety | Version checks, immutable economics |
 
@@ -645,15 +685,17 @@ public struct FaithRouter has key {
 | `sui::event` | Event emission |
 | `sui::tx_context` | Transaction context |
 | `sui::clock` | Timestamp access |
+| `sui::display` | NFT display metadata |
+| `sui::package` | Publisher for display |
 | `sui_system::sui_system` | Native staking |
-| `sui_system::staking_pool` | Staked SUI handling |
 
 ---
 
 ## Notes
 
-1. **Package visibility**: Core modules use `public(package)` for internal functions
-2. **Friend pattern**: Listing is friend of vaults for orchestration
-3. **Capability pattern**: Admin actions require capabilities
-4. **Display support**: SupporterPass should have Display for wallet UX
-5. **Naming**: Use Tide terminology throughout (not Category)
+1. **Registry-first:** All listings go through ListingRegistry
+2. **Council gating:** CouncilCap required for listing lifecycle
+3. **Per-listing pause:** Each listing has its own pause flag
+4. **Config hash:** Immutable config verified via hash
+5. **v1 Constraint:** Only FAITH (Listing #1) surfaced in product
+6. **Naming:** Use Tide terminology throughout (never "Category" or "FEF")

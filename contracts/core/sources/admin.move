@@ -1,40 +1,24 @@
-/// Capability-gated admin actions.
+/// Admin actions for Tide Core.
 /// 
-/// Admin module provides:
-/// - Listing creation (requires AdminCap)
-/// - Route capability management
-/// - Emergency controls
+/// This module provides:
+/// - Global protocol pause (via AdminCap)
+/// - Convenience wrappers for emergency controls
+/// 
+/// Note: Listing creation is now council-gated via listing::new().
+/// Most admin operations are now handled by CouncilCap.
 module tide_core::admin;
 
 use tide_core::tide::{Tide, AdminCap};
-use tide_core::listing::{Self, Listing, ListingCap};
+use tide_core::council::CouncilCap;
+use tide_core::listing::{Self, Listing};
+use tide_core::registry::ListingRegistry;
 use tide_core::capital_vault::CapitalVault;
 use tide_core::reward_vault::{RewardVault, RouteCapability};
 use tide_core::staking_adapter::StakingAdapter;
 
-// === Admin Functions ===
+// === Global Protocol Admin (AdminCap) ===
 
-/// Create a new listing. Requires AdminCap.
-/// 
-/// For v1, this creates the single FAITH listing.
-/// Returns all objects for the caller to share/transfer.
-/// 
-/// Note: In Sui, `share_object` and `transfer` can only be called from
-/// the defining module, so we return the objects for the caller to handle,
-/// or this should be called from listing module.
-public fun create_listing(
-    _tide: &Tide,
-    _cap: &AdminCap,
-    issuer: address,
-    validator: address,
-    tranche_amounts: vector<u64>,
-    tranche_times: vector<u64>,
-    ctx: &mut TxContext,
-): (Listing, CapitalVault, RewardVault, StakingAdapter, ListingCap, RouteCapability) {
-    listing::new(issuer, validator, tranche_amounts, tranche_times, ctx)
-}
-
-/// Convenience wrapper for pause.
+/// Pause the entire protocol (global emergency).
 public fun pause_protocol(
     tide: &mut Tide,
     cap: &AdminCap,
@@ -43,11 +27,55 @@ public fun pause_protocol(
     tide.pause(cap, ctx);
 }
 
-/// Convenience wrapper for unpause.
+/// Unpause the entire protocol.
 public fun unpause_protocol(
     tide: &mut Tide,
     cap: &AdminCap,
     ctx: &TxContext,
 ) {
     tide.unpause(cap, ctx);
+}
+
+// === Council-Gated Functions ===
+
+/// Create a new listing. Requires CouncilCap.
+/// 
+/// This is the canonical way to create listings in the registry-first architecture.
+/// Returns all objects for the caller to share/transfer appropriately.
+public fun create_listing(
+    registry: &mut ListingRegistry,
+    council_cap: &CouncilCap,
+    issuer: address,
+    validator: address,
+    tranche_amounts: vector<u64>,
+    tranche_times: vector<u64>,
+    revenue_bps: u64,
+    ctx: &mut TxContext,
+): (Listing, CapitalVault, RewardVault, StakingAdapter, listing::ListingCap, RouteCapability) {
+    listing::new(
+        registry,
+        council_cap,
+        issuer,
+        validator,
+        tranche_amounts,
+        tranche_times,
+        revenue_bps,
+        ctx,
+    )
+}
+
+/// Pause a specific listing.
+public fun pause_listing(
+    listing: &mut Listing,
+    council_cap: &CouncilCap,
+) {
+    listing.pause(council_cap);
+}
+
+/// Resume a specific listing.
+public fun resume_listing(
+    listing: &mut Listing,
+    council_cap: &CouncilCap,
+) {
+    listing.resume(council_cap);
 }

@@ -48,8 +48,21 @@ This document lists all security invariants that MUST hold for Tide Core v1. Vio
 |----|-----------|----------|
 | A1 | Only authorized router can deposit to RewardVault | `reward_vault.move` |
 | A2 | Only Listing logic can trigger tranche release | `capital_vault.move` |
-| A3 | Pause MUST NOT enable fund redirection | `tide.move`, `admin.move` |
+| A3 | Pause MUST NOT enable fund redirection | `tide.move`, `listing.move` |
 | A4 | Tide holds no capital and CANNOT redirect funds | `tide.move` |
+| A5 | ListingRegistry holds no capital and CANNOT redirect funds | `registry.move` |
+
+---
+
+## Council Invariants
+
+| ID | Invariant | Location |
+|----|-----------|----------|
+| G1 | Council MUST NOT seize capital | `council.move`, `listing.move` |
+| G2 | Council MUST NOT redirect rewards | `council.move`, `reward_vault.move` |
+| G3 | Council MUST NOT change economics after activation | `listing.move` |
+| G4 | Listing creation MUST go through registry | `registry.move`, `listing.move` |
+| G5 | Per-listing pause MUST NOT allow fund redirection | `listing.move` |
 
 ---
 

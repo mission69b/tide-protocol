@@ -1,4 +1,4 @@
-# Tide Core v1 — FEF Launch Specification
+# Tide Core v1 — FEF Launch Specification (LOCKED)
 
 **Status:** Canonical — Engineering & Audit Ready
 
@@ -6,19 +6,23 @@
 
 **Scope:** Core primitives only, deployed once and surfaced as **FEF** inside FAITH UI
 
-**Explicitly NOT included:** registry, council, multi‑listing, marketplace, protocol fees
+**Explicitly NOT included:** marketplace, protocol fees (v1)
+
+**Included in v1:** Registry-first architecture with minimal council gating. Only **FAITH** is configured and surfaced as Listing #1 (FEF).
 
 ---
 
 ## Positioning
 
-**Tide Core v1** is the minimal on‑chain infrastructure required to raise capital **after product–market fit**, without selling tokens, issuing equity, or introducing discretionary fund control.
+**Tide v1** is the minimal on-chain infrastructure required to raise capital **after product-market fit**, without selling tokens, issuing equity, or introducing discretionary fund control.
 
-For v1, Tide Core is deployed with **a single hardcoded listing**:
+Tide v1 is deployed with a **registry-first architecture** and **minimal council gating**, but ships with **only one configured and surfaced listing**:
 
-> Listing #1 — FAITH (surfaced as "Faith Expansion Fund / FEF")
+> **Listing #1 — FAITH (surfaced as "Faith Expansion Fund / FEF")**
 
 FEF is a **product surface**, not a separate protocol.
+
+The registry and council exist to establish the canonical pattern and avoid future refactors — **not** to expand the v1 product surface.
 
 ---
 
@@ -26,11 +30,19 @@ FEF is a **product surface**, not a separate protocol.
 
 All v1 implementations **MUST** satisfy:
 
-- **Single Listing Only:** Exactly one listing (FAITH). No registry.
-- **No Governance:** No council, voting, or approvals in v1.
-- **Revenue‑Backed Only:** Rewards derive exclusively from real on‑chain revenue and native staking yield.
-- **Deterministic Economics:** All parameters fixed at activation; no post‑launch changes.
-- **Non‑Custodial:** Capital is controlled exclusively by on‑chain logic.
+- **Registry-First:** Listings are created via a `ListingRegistry` shared object.
+  - v1 MUST ship with **only one configured & surfaced listing**: FAITH (Listing #1 / FEF).
+  - Additional listings MAY exist in the registry but MUST NOT be surfaced or enabled in UI.
+
+- **Minimal Council Gating:** A small multisig council gates listing creation, activation, finalization, and pause.
+  - Council MUST NOT seize capital, redirect rewards, or change live economics.
+
+- **Revenue-Backed Only:** Rewards derive exclusively from real on-chain revenue and native staking yield.
+
+- **Deterministic Economics:** All parameters fixed at activation; no post-launch changes.
+
+- **Non-Custodial:** Capital is controlled exclusively by on-chain logic.
+
 - **No Financial Engineering:** Native Sui staking only; no lending or rehypothecation.
 
 ---
@@ -38,19 +50,34 @@ All v1 implementations **MUST** satisfy:
 ## Actors (v1)
 
 - **Backers:** Contribute SUI, receive a transferable economic position, claim rewards.
-- **Issuer (FAITH):** Receives released capital and routes revenue on‑chain.
+- **Issuer (FAITH):** Receives released capital and routes revenue on-chain.
+- **Listing Council (Multisig):** Approves listing creation, activation/finalization, and pause/resume actions.
 - **Tide Treasury:** Exists as a configured address but receives **no fees in v1**.
 
 ---
 
-## On‑Chain Objects (v1)
+## On-Chain Objects (v1)
+
+### 0) `ListingRegistry` (shared)
+
+Registry of all listings.
+
+- Maintains a monotonically increasing `listing_count`
+- Stores references (IDs) to all Listing objects
+- Gated creation via council capability
+
+**v1 constraint:** Only **FAITH Listing #1** is configured and surfaced in the product.
+
+**Invariant:** Registry holds no capital and cannot redirect funds.
+
+---
 
 ### 1) `Tide` (shared)
 
 Global protocol configuration.
 
 - Treasury address (configured, unused in v1)
-- Global pause flag
+- Global pause flag (optional, per-listing pause is primary)
 - Version marker
 
 **Invariant:** Tide holds no capital and cannot redirect funds.
@@ -59,14 +86,16 @@ Global protocol configuration.
 
 ### 2) `Listing` (shared)
 
-Represents the single active capital raise (FAITH).
+Represents an active capital raise.
 
-- Immutable config hash
-- Issuer address (FAITH)
+- Unique listing ID (from registry)
+- Immutable config hash (set at creation, verified at activation)
+- Issuer address
 - References to CapitalVault and RewardVault
 - Lifecycle state:
-    - `draft → active → finalized → completed`
+  - `draft → active → finalized → completed`
 - Deterministic release schedule parameters
+- Pause flag (per-listing)
 
 **Invariant:** Listing economics MUST NOT change after activation.
 
@@ -93,7 +122,7 @@ Holds contributed principal (SUI).
 Provides limited capital productivity.
 
 - Stakes **only locked capital**
-- Implements time‑segmented staking
+- Implements time-segmented staking
 
 **Priority Rule (Normative):**
 
@@ -113,8 +142,9 @@ Holds and distributes rewards to backers.
 
 1. Protocol revenue routed from FAITH
 2. Native Sui staking rewards (from locked capital)
-- SUI‑only
-- Maintains a cumulative reward‑per‑share index
+
+- SUI-only
+- Maintains a cumulative reward-per-share index
 
 **Invariants:**
 
@@ -128,22 +158,63 @@ Holds and distributes rewards to backers.
 
 Represents a backer's full economic position.
 
+**Core requirements (v1):**
+
 - Owned object (transferable NFT)
-- Optional Display metadata
-- Stores:
-    - normalized contribution shares (immutable)
-    - claim cursor
+- Stores **economic state only**:
+  - `listing_id` — reference to parent listing
+  - `shares` — normalized contribution shares (immutable, non-zero)
+  - `claim_index` — reward claim cursor (index snapshot)
+  - Optional non-economic metadata (e.g., `created_epoch`)
 
 **Normative rules:**
 
 - Ownership defines full reward entitlement
 - Claim entitlement MUST move atomically with ownership
-- Shares are fixed‑point units calculated at deposit time
-- Rounding behavior MUST be deterministic
+- Shares are immutable after mint and MUST be > 0
+- No principal or reward balances are stored on the pass
+- Pass MUST NOT be destroyable in v1
 
-**Important:**
+**Display & presentation (v1):**
 
-This object is **not** an account abstraction.
+- Display metadata MUST be defined in `display.move` (presentation-only)
+- Display SHOULD include `name`, `description`, `image_url`, and `link`
+- `image_url` / `link` MAY point to an off-chain renderer using `{id}` placeholder
+- Display configuration MUST remain non-economic
+
+**Invariant:** `SupporterPass` contains no logic or data that can affect economics beyond share-based reward entitlement.
+
+**Important:** This object is **not** an account abstraction and MUST remain minimal and auditable.
+
+---
+
+## Governance & Control (v1)
+
+v1 includes **minimal council gating** to support a registry-first architecture without governance theater.
+
+### Council Model (Normative)
+
+- Council is a 3-5 key multisig (capability-based on-chain admin is recommended).
+- Council capability is `CouncilCap` (transferable, can be held by multisig).
+
+**Council MAY:**
+
+- Create/register new listings
+- Activate or finalize listings
+- Pause or resume listings
+- Approve immutable listing config hashes
+
+**Council MUST NOT:**
+
+- Seize capital
+- Redirect rewards
+- Change live listing economics after activation
+
+### Config Hash Discipline (Normative)
+
+- Each listing stores an immutable config hash computed at creation.
+- Council approvals MUST reference a specific hash (no silent drift).
+- Config hash includes: issuer address, tranche amounts, tranche times, revenue BPS.
 
 ---
 
@@ -172,7 +243,7 @@ For v1 (FEF launch), the repository SHOULD include a **FAITH adapter package** (
 - Routes a fixed % of real protocol revenue (SUI)
 - Routes ONLY to the Listing's RewardVault
 - Emits standardized `RouteIn` events
-- Percentage is immutable post‑activation
+- Percentage is immutable post-activation
 - Routing MUST NOT be bypassable via upgrades or alternative fee paths
 
 ---
@@ -181,7 +252,7 @@ For v1 (FEF launch), the repository SHOULD include a **FAITH adapter package** (
 
 ### Reward Accounting
 
-- RewardVault maintains a cumulative reward‑per‑share index
+- RewardVault maintains a cumulative reward-per-share index
 - Each SupporterPass stores the last claimed index
 
 **Claim formula:**
@@ -194,8 +265,8 @@ After claim, pass_index is updated.
 
 **Properties:**
 
-- Transfer‑safe
-- No double‑claim
+- Transfer-safe
+- No double-claim
 - Deterministic gas cost
 
 ### Language Constraint (Normative)
@@ -207,7 +278,7 @@ Rewards MUST NOT be described as:
 - profit sharing
 - ROI guarantees
 
-Rewards are **variable, claimable, and usage‑derived**.
+Rewards are **variable, claimable, and usage-derived**.
 
 ---
 
@@ -215,7 +286,9 @@ Rewards are **variable, claimable, and usage‑derived**.
 
 Purpose: mitigate critical bugs without changing economics.
 
-When paused:
+**Per-listing pause** (primary):
+
+When a listing is paused:
 
 - Capital releases STOP
 - Contributions MAY be halted
@@ -223,19 +296,23 @@ When paused:
 - Revenue routing MAY continue
 - Reward claims remain ENABLED by default
 
+**Global pause** (optional, for critical emergencies):
+
+- Affects all listings simultaneously
+- Same semantics as per-listing pause
+
 **Invariant:** Pause MUST NOT allow capital or reward redirection.
 
 ---
 
-## Explicit Non‑Goals (v1)
+## Explicit Non-Goals (v1)
 
-- No registry or multi‑listing
-- No council or governance
+- No public/open listing creation (council-gated only)
+- No marketplace
 - No raise fees
 - No treasury skimming
-- No marketplace
 - No early withdrawals or refunds
-- No non‑SUI assets
+- No non-SUI assets
 - No lending or rehypothecation
 
 ---
@@ -248,20 +325,64 @@ When paused:
 
 FAITH demonstrates:
 
-- real revenue routing
-- staking productivity while locked
-- transfer‑safe reward claims
-- non‑discretionary capital formation
+- Real revenue routing
+- Staking productivity while locked
+- Transfer-safe reward claims
+- Non-discretionary capital formation
 
 ---
 
-## Upgrade Path (Post‑v1, Explicitly Out of Scope)
+## Repository Structure (Normative for v1)
+
+```
+tide-protocol/
+├── CLAUDE.md
+├── README.md
+│
+├── contracts/
+│   ├── core/                         # Tide Core package
+│   │   ├── Move.toml
+│   │   ├── sources/
+│   │   │   ├── tide.move             # Global config + pause
+│   │   │   ├── registry.move         # ListingRegistry
+│   │   │   ├── council.move          # Council capability + gating
+│   │   │   ├── listing.move          # Listing lifecycle
+│   │   │   ├── capital_vault.move    # Principal custody
+│   │   │   ├── reward_vault.move     # Reward distribution
+│   │   │   ├── staking_adapter.move  # Native Sui staking
+│   │   │   ├── supporter_pass.move   # Backer NFT (economics)
+│   │   │   ├── display.move          # Display metadata
+│   │   │   ├── math.move             # Fixed-point arithmetic
+│   │   │   ├── constants.move        # Shared constants
+│   │   │   ├── errors.move           # Error codes
+│   │   │   └── events.move           # Event definitions
+│   │   └── tests/
+│   │
+│   └── adapters/
+│       └── faith_router/             # FAITH revenue adapter
+│
+├── spec/
+│   ├── tide-core-v1.md               # This specification
+│   └── invariants.md
+│
+└── scripts/
+```
+
+**Normative rules:**
+
+- Tide Core contracts MUST live in their own Move package
+- FAITH MUST consume Tide Core as an external dependency
+- No FAITH gameplay logic may live in this repository
+- Naming inside Move code MUST use Tide / Listing / Vault terminology (never "FEF")
+
+---
+
+## Upgrade Path (Post-v1, Explicitly Out of Scope)
 
 Only after v1 proof:
 
-- Listing registry
-- Council gating
-- Multi‑issuer onboarding
+- Surfacing additional listings in UI
+- Expanded council policies
 - Raise fees & treasury policy
 - Minimal marketplace
 
@@ -271,8 +392,8 @@ All v1 invariants MUST remain preserved.
 
 ## Canonical Summary
 
-Tide Core v1 is a **single‑listing, deterministic, revenue‑backed capital primitive**.
+Tide Core v1 is a **registry-first, council-gated, revenue-backed capital primitive**.
 
-FEF is simply its first product surface.
+FEF is simply its first (and only surfaced) product surface.
 
 No duplication. No migration. No rewrite.

@@ -157,3 +157,15 @@ public struct Unpaused has copy, drop {
 public fun emit_unpaused(unpaused_by: address) {
     emit(Unpaused { unpaused_by });
 }
+
+// === Listing Pause Events ===
+
+/// Emitted when a listing's pause state changes.
+public struct ListingPauseChanged has copy, drop {
+    listing_id: ID,
+    paused: bool,
+}
+
+public fun emit_pause_changed(listing_id: ID, paused: bool) {
+    emit(ListingPauseChanged { listing_id, paused });
+}

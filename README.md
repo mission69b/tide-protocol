@@ -20,6 +20,7 @@ Tide enables projects to raise capital **after product-market fit** without sell
 
 - **Backers** — Contribute SUI, receive a transferable economic position (SupporterPass), claim rewards
 - **Issuer** — Receives released capital on schedule, routes protocol revenue on-chain
+- **Listing Council** — 3-5 key multisig that gates listing creation, activation, and pause
 - **Tide Treasury** — Configured address for future protocol fees (unused in v1)
 
 ### Key Objects
@@ -27,6 +28,8 @@ Tide enables projects to raise capital **after product-market fit** without sell
 | Object | Type | Purpose |
 |--------|------|---------|
 | `Tide` | Shared | Global configuration, pause flag, version |
+| `ListingRegistry` | Shared | Registry of all listings, council-gated creation |
+| `CouncilCap` | Owned | Capability for council-gated operations |
 | `Listing` | Shared | Capital raise parameters, lifecycle state, release schedule |
 | `CapitalVault` | Shared | Holds contributed SUI, manages tranche releases |
 | `RewardVault` | Shared | Holds rewards, maintains cumulative index for fair distribution |
@@ -249,18 +252,23 @@ When paused:
 
 ## v1 Constraints
 
-Tide v1 is intentionally minimal:
+Tide v1 is intentionally minimal with a **registry-first architecture**:
 
 | Feature | v1 Status |
 |---------|-----------|
-| Listings | Single (FAITH only) |
-| Governance | None |
+| Architecture | Registry-first (future-proof) |
+| Listings | Only FAITH configured & surfaced (Listing #1) |
+| Governance | Minimal council gating (3-5 key multisig) |
 | Raise fees | None |
 | Treasury fees | Configured but unused |
 | Assets | SUI only |
 | Staking | Native Sui only |
 | Marketplace | None |
 | Refunds | None |
+
+**Council MAY:** Create listings, activate/finalize, pause/resume
+
+**Council MUST NOT:** Seize capital, redirect rewards, change live economics
 
 ## Repository Structure
 
@@ -274,11 +282,14 @@ tide-protocol/
 │   │   ├── Move.toml
 │   │   ├── sources/
 │   │   │   ├── tide.move              # Global config + pause
+│   │   │   ├── registry.move          # Listing registry (council-gated)
+│   │   │   ├── council.move           # Council capability
 │   │   │   ├── listing.move           # Listing lifecycle
 │   │   │   ├── capital_vault.move     # Principal custody
 │   │   │   ├── reward_vault.move      # Reward distribution
 │   │   │   ├── staking_adapter.move   # Native Sui staking
-│   │   │   ├── supporter_pass.move    # Backer NFT position
+│   │   │   ├── supporter_pass.move    # Backer NFT position (economics only)
+│   │   │   ├── display.move           # Display metadata (sui::display)
 │   │   │   ├── math.move              # Fixed-point arithmetic
 │   │   │   ├── admin.move             # Capability-gated admin
 │   │   │   ├── constants.move         # Shared constants

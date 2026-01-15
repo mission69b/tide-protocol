@@ -1,12 +1,15 @@
 /// Transferable NFT representing a backer's economic position.
 /// 
-/// SupporterPass stores:
+/// SupporterPass stores economics only:
 /// - Fixed shares (immutable after mint)
 /// - Claim cursor (last claimed reward index)
-/// - Original deposit amount and timestamp (for display)
+/// - Created epoch (non-economic, for reference only)
 /// 
 /// Ownership defines full reward entitlement - when transferred,
 /// claim rights move atomically with the NFT.
+/// 
+/// IMPORTANT: This module MUST NOT call sui::display.
+/// Display is configured separately in display.move.
 module tide_core::supporter_pass;
 
 use tide_core::errors;
@@ -14,18 +17,26 @@ use tide_core::errors;
 // === Structs ===
 
 /// Backer's economic position as transferable NFT.
+/// 
+/// Economic fields:
+/// - shares: determines reward entitlement (immutable)
+/// - claim_index: tracks last claimed position (mutable)
+/// 
+/// Non-economic fields (for display/reference only):
+/// - listing_id: parent listing reference
+/// - created_epoch: when the pass was minted
 public struct SupporterPass has key, store {
     id: UID,
     /// ID of the listing this pass belongs to.
     listing_id: ID,
     /// Fixed shares calculated at deposit time (immutable).
+    /// Determines reward entitlement proportionally.
     shares: u128,
     /// Last claimed reward index (updated on claim).
+    /// Used to calculate claimable rewards.
     claim_index: u128,
-    /// Original deposit amount in SUI (for display).
-    deposited_amount: u64,
-    /// Timestamp when deposit was made (for display).
-    deposited_at: u64,
+    /// Epoch when pass was created (non-economic, for display).
+    created_epoch: u64,
 }
 
 // === Package Functions ===
@@ -35,8 +46,6 @@ public(package) fun mint(
     listing_id: ID,
     shares: u128,
     current_index: u128,
-    deposited_amount: u64,
-    deposited_at: u64,
     ctx: &mut TxContext,
 ): SupporterPass {
     SupporterPass {
@@ -44,8 +53,7 @@ public(package) fun mint(
         listing_id,
         shares,
         claim_index: current_index,
-        deposited_amount,
-        deposited_at,
+        created_epoch: ctx.epoch(),
     }
 }
 
@@ -80,14 +88,9 @@ public fun claim_index(self: &SupporterPass): u128 {
     self.claim_index
 }
 
-/// Get original deposit amount.
-public fun deposited_amount(self: &SupporterPass): u64 {
-    self.deposited_amount
-}
-
-/// Get deposit timestamp.
-public fun deposited_at(self: &SupporterPass): u64 {
-    self.deposited_at
+/// Get created epoch.
+public fun created_epoch(self: &SupporterPass): u64 {
+    self.created_epoch
 }
 
 /// Assert pass belongs to given listing.
@@ -102,11 +105,9 @@ public fun mint_for_testing(
     listing_id: ID,
     shares: u128,
     current_index: u128,
-    deposited_amount: u64,
-    deposited_at: u64,
     ctx: &mut TxContext,
 ): SupporterPass {
-    mint(listing_id, shares, current_index, deposited_amount, deposited_at, ctx)
+    mint(listing_id, shares, current_index, ctx)
 }
 
 #[test_only]
