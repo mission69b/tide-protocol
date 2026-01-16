@@ -17,8 +17,9 @@ use std::hash;
 use std::bcs;
 
 use sui::clock::Clock;
-use sui::coin::Coin;
+use sui::coin::{Self, Coin};
 use sui::sui::SUI;
+use sui_system::sui_system::SuiSystemState;
 
 use tide_core::tide::Tide;
 use tide_core::registry::ListingRegistry;
@@ -480,6 +481,186 @@ public fun release_all_ready_tranches(
     
     let _ = total_amount;
     let _ = indices;
+}
+
+// === Staking Functions ===
+
+/// Stake all pending capital in the staking adapter.
+/// Callable by anyone when staking is enabled.
+/// Capital must be deposited to the staking adapter first via `deposit_for_staking`.
+public fun stake_pending(
+    self: &Listing,
+    tide: &Tide,
+    staking_adapter: &mut StakingAdapter,
+    system_state: &mut SuiSystemState,
+    ctx: &mut TxContext,
+) {
+    tide.assert_not_paused();
+    assert!(!self.paused, errors::paused());
+    assert!(staking_adapter.listing_id() == self.id.to_inner(), errors::invalid_state());
+    
+    staking_adapter.stake(system_state, ctx);
+}
+
+/// Deposit SUI for staking and stake immediately.
+/// Council-gated function to add capital to the staking pool.
+/// 
+/// This is used to stake capital that's been raised. The capital
+/// flows: caller → staking_adapter → validator.
+public fun deposit_and_stake(
+    self: &Listing,
+    tide: &Tide,
+    _council_cap: &CouncilCap,
+    staking_adapter: &mut StakingAdapter,
+    deposit: Coin<SUI>,
+    system_state: &mut SuiSystemState,
+    ctx: &mut TxContext,
+) {
+    tide.assert_not_paused();
+    assert!(!self.paused, errors::paused());
+    assert!(staking_adapter.listing_id() == self.id.to_inner(), errors::invalid_state());
+    
+    // Deposit to staking adapter
+    staking_adapter.deposit(deposit);
+    
+    // Stake with validator
+    staking_adapter.stake(system_state, ctx);
+}
+
+/// Unstake a specific stake position by index.
+/// Returns the withdrawn SUI to the caller.
+public fun unstake_at(
+    self: &Listing,
+    tide: &Tide,
+    _council_cap: &CouncilCap,
+    staking_adapter: &mut StakingAdapter,
+    stake_idx: u64,
+    system_state: &mut SuiSystemState,
+    ctx: &mut TxContext,
+): Coin<SUI> {
+    tide.assert_not_paused();
+    assert!(!self.paused, errors::paused());
+    assert!(staking_adapter.listing_id() == self.id.to_inner(), errors::invalid_state());
+    
+    let balance = staking_adapter.unstake_at(stake_idx, system_state, ctx);
+    coin::from_balance(balance, ctx)
+}
+
+/// Unstake all staked positions.
+/// Returns all SUI (principal + rewards) to the caller.
+public fun unstake_all(
+    self: &Listing,
+    tide: &Tide,
+    _council_cap: &CouncilCap,
+    staking_adapter: &mut StakingAdapter,
+    system_state: &mut SuiSystemState,
+    ctx: &mut TxContext,
+): Coin<SUI> {
+    tide.assert_not_paused();
+    assert!(!self.paused, errors::paused());
+    assert!(staking_adapter.listing_id() == self.id.to_inner(), errors::invalid_state());
+    
+    let balance = staking_adapter.unstake_all(system_state, ctx);
+    coin::from_balance(balance, ctx)
+}
+
+/// Harvest staking rewards and split between backers and treasury.
+/// 
+/// This function:
+/// 1. Unstakes all positions
+/// 2. Re-stakes the original principal
+/// 3. Routes 80% of rewards to RewardVault (backers)
+/// 4. Routes 20% of rewards to Treasury
+/// 
+/// Callable by anyone (permissionless harvesting).
+public fun harvest_staking_rewards(
+    self: &Listing,
+    tide: &Tide,
+    staking_adapter: &mut StakingAdapter,
+    reward_vault: &mut RewardVault,
+    route_cap: &RouteCapability,
+    system_state: &mut SuiSystemState,
+    ctx: &mut TxContext,
+) {
+    tide.assert_not_paused();
+    assert!(!self.paused, errors::paused());
+    assert!(staking_adapter.listing_id() == self.id.to_inner(), errors::invalid_state());
+    
+    // Get the original staked principal before unstaking
+    let original_principal = staking_adapter.staked_principal();
+    
+    // Unstake all
+    let total_withdrawn = staking_adapter.unstake_all(system_state, ctx);
+    let total_amount = total_withdrawn.value();
+    
+    if (total_amount == 0) {
+        total_withdrawn.destroy_zero();
+        return
+    };
+    
+    // Calculate rewards
+    let rewards_amount = if (total_amount > original_principal) {
+        total_amount - original_principal
+    } else {
+        0
+    };
+    
+    // Convert to coin for handling
+    let mut total_coin = coin::from_balance(total_withdrawn, ctx);
+    
+    if (rewards_amount > 0) {
+        // Split out rewards
+        let rewards_coin = total_coin.split(rewards_amount, ctx);
+        
+        // Split rewards: 80% backers, 20% treasury
+        let (backer_coin, treasury_coin) = staking_adapter.split_rewards(rewards_coin, ctx);
+        
+        // Route backer rewards to RewardVault
+        let backer_amount = backer_coin.value();
+        let treasury_amount = treasury_coin.value();
+        
+        if (backer_amount > 0) {
+            reward_vault.deposit_rewards(route_cap, backer_coin, ctx);
+            
+            events::emit_staking_rewards_harvested(
+                self.id.to_inner(),
+                rewards_amount,
+                backer_amount,
+                treasury_amount,
+                reward_vault.global_index(),
+            );
+        } else {
+            backer_coin.destroy_zero();
+        };
+        
+        // Transfer treasury portion
+        if (treasury_coin.value() > 0) {
+            transfer::public_transfer(treasury_coin, tide.treasury());
+        } else {
+            treasury_coin.destroy_zero();
+        };
+    };
+    
+    // Re-stake the principal
+    staking_adapter.deposit(total_coin);
+    staking_adapter.stake(system_state, ctx);
+}
+
+/// Withdraw pending (unstaked) balance from staking adapter.
+/// Used after unstaking to retrieve funds.
+public fun withdraw_staking_balance(
+    self: &Listing,
+    tide: &Tide,
+    _council_cap: &CouncilCap,
+    staking_adapter: &mut StakingAdapter,
+    amount: u64,
+    ctx: &mut TxContext,
+): Coin<SUI> {
+    tide.assert_not_paused();
+    assert!(!self.paused, errors::paused());
+    assert!(staking_adapter.listing_id() == self.id.to_inner(), errors::invalid_state());
+    
+    staking_adapter.withdraw(amount, ctx)
 }
 
 // === View Functions ===
