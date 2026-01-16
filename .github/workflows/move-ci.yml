@@ -11,10 +11,11 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  # Using mainnet release for stability in CI
-  # See: https://github.com/MystenLabs/sui/commits/mainnet-v1.60.1
-  SUI_TAG: mainnet-v1.60.1
-  SUI_TGZ_URL: https://github.com/MystenLabs/sui/releases/download/mainnet-v1.60.1/sui-mainnet-v1.60.1-ubuntu-x86_64.tgz
+  # Aligned with local dev version (sui 1.62.x)
+  # testnet: https://github.com/MystenLabs/sui/releases/download/testnet-v1.62.0/sui-testnet-v1.62.0-ubuntu-x86_64.tgz
+  # mainnet: https://github.com/MystenLabs/sui/releases/download/mainnet-v1.62.1/sui-mainnet-v1.62.1-ubuntu-x86_64.tgz
+  SUI_TAG: mainnet-v1.62.1
+  SUI_TGZ_URL: https://github.com/MystenLabs/sui/releases/download/mainnet-v1.62.1/sui-mainnet-v1.62.1-ubuntu-x86_64.tgz
   SUI_BIN_DIR: ${{ github.workspace }}/.sui-bin
 
 jobs:
