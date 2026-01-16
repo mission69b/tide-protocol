@@ -12,6 +12,7 @@ module faith_router::faith_router;
 
 use sui::coin::Coin;
 use sui::sui::SUI;
+use sui::transfer;
 
 use tide_core::reward_vault::{RewardVault, RouteCapability};
 use tide_core::constants;
@@ -130,6 +131,18 @@ public fun revenue_bps(self: &FaithRouter): u64 {
 /// Get total routed amount.
 public fun total_routed(self: &FaithRouter): u64 {
     self.total_routed
+}
+
+// === Share/Transfer Functions ===
+
+/// Share the FaithRouter object.
+public fun share(router: FaithRouter) {
+    transfer::share_object(router);
+}
+
+/// Transfer the FaithRouterCap to a recipient.
+public fun transfer_cap(cap: FaithRouterCap, recipient: address) {
+    transfer::public_transfer(cap, recipient);
 }
 
 // === Test Helpers ===
