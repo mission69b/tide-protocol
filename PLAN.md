@@ -546,10 +546,12 @@ public struct Tranche has store, copy, drop {
 
 **Tasks:**
 - [x] Define structs
-- [ ] Implement stake flow
-- [ ] Implement unstake request
-- [ ] Implement reward collection
-- [ ] Handle priority rule
+- [x] Implement stake flow (sui_system::request_add_stake_non_entry)
+- [x] Implement unstake (unstake_at, unstake_all, unstake_for_amount)
+- [x] Implement reward split (80% backers / 20% treasury)
+- [x] Handle priority rule (unstake_for_amount for tranche releases)
+- [x] Store StakedSui in dynamic fields
+- [ ] Add unit tests (requires test_scenario with SuiSystemState)
 
 **Estimated complexity:** High
 

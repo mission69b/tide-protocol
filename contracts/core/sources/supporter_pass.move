@@ -132,8 +132,8 @@ const EWRONG_LISTING: u64 = 10;
 fun test_mint_and_getters() {
     let mut ctx = tx_context::dummy();
     let listing_id = object::id_from_address(@0x1);
-    let shares: u128 = 1_000_000_000_000;
-    let current_index: u128 = 500;
+    let shares: u128 = 1_000_000_000; // 1 SUI worth of shares
+    let current_index: u128 = 100_000_000_000_000_000; // Some index value (1e17)
     
     let pass = mint_for_testing(listing_id, shares, current_index, &mut ctx);
     

@@ -3,8 +3,9 @@ module tide_core::constants;
 
 // === Precision ===
 
-/// 12 decimal fixed-point precision for share calculations.
-public macro fun precision(): u128 { 1_000_000_000_000 }
+/// 18 decimal fixed-point precision for share calculations.
+/// This ensures small reward amounts (< 1 SUI) still update the reward index.
+public macro fun precision(): u128 { 1_000_000_000_000_000_000 }
 
 /// Basis points denominator (10000 = 100%).
 public macro fun max_bps(): u64 { 10_000 }
@@ -12,7 +13,8 @@ public macro fun max_bps(): u64 { 10_000 }
 // === Version ===
 
 /// Protocol version for upgrade compatibility.
-public macro fun version(): u64 { 1 }
+/// v2: Fixed share calculation (no PRECISION scaling) + 1e18 precision for reward index
+public macro fun version(): u64 { 2 }
 
 // === Fee Constants ===
 

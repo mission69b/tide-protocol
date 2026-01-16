@@ -33,12 +33,15 @@ public fun mul_div_up(a: u128, b: u128, c: u128): u128 {
 // === Share Calculations ===
 
 /// Convert deposit amount to shares.
-/// First depositor gets shares = amount × PRECISION.
+/// First depositor gets shares = amount (in MIST, no PRECISION scaling).
 /// Subsequent depositors get proportional shares.
+/// 
+/// Note: PRECISION is used only for the reward index calculation, not for shares.
+/// This ensures small rewards (< total_deposit) can still update the index.
 public fun to_shares(amount: u64, total_principal: u64, total_shares: u128): u128 {
     if (total_principal == 0 || total_shares == 0) {
-        // First deposit: 1 SUI = PRECISION shares
-        (amount as u128) * constants::precision!()
+        // First deposit: shares = amount in MIST (no scaling)
+        (amount as u128)
     } else {
         // Proportional: shares = amount × total_shares / total_principal
         mul_div((amount as u128), total_shares, (total_principal as u128))
@@ -106,48 +109,55 @@ fun test_mul_div_up() {
 
 #[test]
 fun test_to_shares_first_deposit() {
-    let shares = to_shares(1000, 0, 0);
-    assert!(shares == 1000 * constants::precision!());
+    // First deposit: shares = amount (no PRECISION scaling)
+    let shares = to_shares(1_000_000_000, 0, 0); // 1 SUI
+    assert!(shares == 1_000_000_000); // 1e9 shares
 }
 
 #[test]
 fun test_to_shares_proportional() {
-    let total_principal = 1000;
-    let total_shares = 1000 * constants::precision!();
+    // After first deposit of 1 SUI
+    let total_principal: u64 = 1_000_000_000; // 1 SUI
+    let total_shares: u128 = 1_000_000_000;   // 1e9 shares
     
     // Second deposit of same amount should get same shares
-    let shares = to_shares(1000, total_principal, total_shares);
+    let shares = to_shares(1_000_000_000, total_principal, total_shares);
     assert!(shares == total_shares);
+    
+    // Half deposit should get half shares
+    let half_shares = to_shares(500_000_000, total_principal, total_shares);
+    assert!(half_shares == 500_000_000);
 }
 
 #[test]
 fun test_calculate_claimable() {
-    // User with 1000 shares (scaled), index moved from 0 to 1 (scaled by PRECISION)
-    // claimable = shares × delta / PRECISION
-    // = (1000 × PRECISION) × PRECISION / PRECISION = 1000 × PRECISION (as u64)
-    let shares = 1000 * constants::precision!();
-    let pass_index = 0;
-    let global_index = 1; // Small index change (1 unit of reward per PRECISION shares)
+    // User with 1 SUI worth of shares (1e9), index moved by delta
+    // Scenario: 0.1 SUI reward distributed to 1 SUI of shares
+    // 
+    // delta = reward * PRECISION / total_shares
+    //       = 1e8 * 1e18 / 1e9 = 1e17
+    //
+    // claimable = shares * delta / PRECISION
+    //           = 1e9 * 1e17 / 1e18 = 1e8 = 0.1 SUI ✓
+    
+    let shares: u128 = 1_000_000_000; // 1 SUI worth
+    let pass_index: u128 = 0;
+    // Simulate index after 0.1 SUI reward with 1 SUI shares: delta = 1e8 * 1e18 / 1e9 = 1e17
+    let global_index: u128 = 100_000_000_000_000_000; // 1e17
     
     let claimable = calculate_claimable(shares, global_index, pass_index);
-    // claimable = (1000 × PRECISION) × 1 / PRECISION = 1000
-    assert!(claimable == 1000);
+    assert!(claimable == 100_000_000); // 0.1 SUI
 }
 
 #[test]
 fun test_calculate_new_index() {
-    // 100 rewards distributed among 1000 scaled shares
-    // delta = 100 × PRECISION / (1000 × PRECISION) 
-    // But this would be 0 due to integer division!
-    // 
-    // The fix: shares should NOT be scaled by PRECISION for this formula to work.
-    // Or we need to use unscaled shares for reward calculation.
-    // 
-    // With unscaled shares (1000), delta = 100 × PRECISION / 1000 = PRECISION / 10
-    let old_index = 0;
-    let reward = 100;
-    let total_shares = 1000; // Unscaled for this test
+    // 0.1 SUI reward distributed among 1 SUI of shares
+    // delta = 1e8 * 1e18 / 1e9 = 1e17
+    let old_index: u128 = 0;
+    let reward: u64 = 100_000_000; // 0.1 SUI
+    let total_shares: u128 = 1_000_000_000; // 1 SUI worth of shares
     
     let new_index = calculate_new_index(old_index, reward, total_shares);
-    assert!(new_index == constants::precision!() / 10);
+    // delta = 1e8 * 1e18 / 1e9 = 1e17
+    assert!(new_index == 100_000_000_000_000_000); // 1e17
 }

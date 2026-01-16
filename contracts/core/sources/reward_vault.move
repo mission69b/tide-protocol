@@ -266,15 +266,16 @@ fun test_deposit_rewards_updates_index() {
     let mut vault = new_for_testing(listing_id, &mut ctx);
     let cap = create_route_cap_for_testing(listing_id, &mut ctx);
     
-    // Set shares first
-    vault.set_total_shares_for_testing(1_000_000_000_000); // 1e12
+    // Set shares: 1 SUI deposit = 1e9 shares (no PRECISION scaling)
+    vault.set_total_shares_for_testing(1_000_000_000); // 1 SUI worth
     
-    // Deposit rewards
+    // Deposit rewards: 0.1 SUI
     let reward_coin = coin::mint_for_testing<SUI>(100_000_000, &mut ctx); // 0.1 SUI
     vault.deposit_rewards(&cap, reward_coin, &ctx);
     
-    // Index should be updated
+    // Index should be updated: delta = 1e8 * 1e18 / 1e9 = 1e17
     assert!(vault.global_index() > 0);
+    assert!(vault.global_index() == 100_000_000_000_000_000); // 1e17
     assert!(vault.balance() == 100_000_000);
     assert!(vault.total_deposited() == 100_000_000);
     
@@ -291,14 +292,15 @@ fun test_index_monotonically_increases() {
     let mut vault = new_for_testing(listing_id, &mut ctx);
     let cap = create_route_cap_for_testing(listing_id, &mut ctx);
     
-    vault.set_total_shares_for_testing(1_000_000_000_000);
+    // 1 SUI worth of shares
+    vault.set_total_shares_for_testing(1_000_000_000);
     
-    // First deposit
+    // First deposit: 0.1 SUI
     let coin1 = coin::mint_for_testing<SUI>(100_000_000, &mut ctx);
     vault.deposit_rewards(&cap, coin1, &ctx);
     let index_after_first = vault.global_index();
     
-    // Second deposit
+    // Second deposit: 0.2 SUI
     let coin2 = coin::mint_for_testing<SUI>(200_000_000, &mut ctx);
     vault.deposit_rewards(&cap, coin2, &ctx);
     let index_after_second = vault.global_index();
@@ -319,22 +321,21 @@ fun test_calculate_claimable() {
     let mut vault = new_for_testing(listing_id, &mut ctx);
     let cap = create_route_cap_for_testing(listing_id, &mut ctx);
     
-    // Setup: 1000 shares total, backer has 100 shares (10%)
-    let total_shares: u128 = 1_000_000_000_000_000; // 1e15
-    let backer_shares: u128 = 100_000_000_000_000;  // 1e14 (10%)
+    // Setup: 10 SUI total shares, backer has 1 SUI (10%)
+    let total_shares: u128 = 10_000_000_000;  // 10 SUI worth
+    let backer_shares: u128 = 1_000_000_000;  // 1 SUI worth (10%)
     
     vault.set_total_shares_for_testing(total_shares);
     
-    // Deposit 1000 SUI worth of rewards
-    let rewards = coin::mint_for_testing<SUI>(1_000_000_000_000, &mut ctx); // 1000 SUI
+    // Deposit 1 SUI worth of rewards
+    let rewards = coin::mint_for_testing<SUI>(1_000_000_000, &mut ctx); // 1 SUI
     vault.deposit_rewards(&cap, rewards, &ctx);
     
-    // Backer claiming from index 0 should get ~10% of rewards (100 SUI)
+    // Backer claiming from index 0 should get 10% of rewards (0.1 SUI)
     let claimable = vault.calculate_claimable(backer_shares, 0);
     
-    // Should be approximately 100 SUI (100_000_000_000 MIST)
-    // Allow for rounding
-    assert!(claimable >= 99_000_000_000 && claimable <= 101_000_000_000);
+    // Should be 0.1 SUI (100_000_000 MIST)
+    assert!(claimable == 100_000_000);
     
     // Cleanup
     destroy_route_cap_for_testing(cap);
