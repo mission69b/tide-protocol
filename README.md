@@ -368,6 +368,14 @@ See [DEPLOYMENT.md](./DEPLOYMENT.md) for:
 - Step-by-step deployment guide
 - Emergency procedures
 
+## Protocol Integrations
+
+See [ADAPTERS.md](./ADAPTERS.md) for:
+- Adapter architecture pattern
+- How protocols route revenue to Tide
+- Step-by-step integration guide
+- Template for new protocol adapters
+
 Quick start:
 ```bash
 # Install deployment scripts

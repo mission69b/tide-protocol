@@ -653,6 +653,8 @@ public struct ListingConfig has copy, drop, store {
 
 **Purpose:** FAITH-specific revenue routing adapter.
 
+**Documentation:** See [ADAPTERS.md](./ADAPTERS.md) for the complete adapter pattern and integration guide.
+
 **Invariants:**
 - Revenue percentage immutable
 - Routes only to RewardVault
@@ -661,6 +663,7 @@ public struct ListingConfig has copy, drop, store {
 **Tasks:**
 - [x] Define structs
 - [x] Implement route function
+- [x] Implement share/transfer_cap functions
 - [x] Write routing tests (via E2E tests using RouteCapability)
 
 **Estimated complexity:** Medium

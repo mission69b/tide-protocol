@@ -198,6 +198,8 @@ EOF
 
 ## Step 4: Deploy faith_router Package
 
+> **Note:** For detailed adapter architecture and integration patterns, see [ADAPTERS.md](./ADAPTERS.md).
+
 ### 4.1 Update Dependency
 
 Edit `contracts/adapters/faith_router/Move.toml`:

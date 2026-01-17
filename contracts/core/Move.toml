@@ -2,10 +2,11 @@
 name = "tide_core"
 edition = "2024"
 version = "0.0.1"
-published-at = "0x0"
+# v3 testnet deployment
+published-at = "0xdf12c2dd1d444d827277d710b16ec2b96ab3b8f37d774bad7e5047bb602fae5f"
 
 [dependencies]
 # Sui, Bridge, MoveStdlib, and SuiSystem are implicitly imported (Sui 1.45+)
 
 [addresses]
-tide_core = "0x0"
+tide_core = "0xdf12c2dd1d444d827277d710b16ec2b96ab3b8f37d774bad7e5047bb602fae5f"
