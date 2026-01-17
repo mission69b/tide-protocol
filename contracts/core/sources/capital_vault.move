@@ -356,6 +356,36 @@ public(package) fun release_all_ready_tranches(
     (released_indices, total_released, coin::from_balance(combined_balance, ctx))
 }
 
+// === Staking Integration ===
+
+/// Withdraw capital for staking purposes.
+/// Council-gated via listing module. Only withdraws from available balance.
+/// The withdrawn capital should be deposited into StakingAdapter for yield.
+/// 
+/// Note: This does NOT reduce the tranche schedule - tranches are still owed.
+/// Before releasing a tranche, the capital must be returned via return_from_staking.
+public(package) fun withdraw_for_staking(
+    self: &mut CapitalVault,
+    amount: u64,
+    ctx: &mut TxContext,
+): Coin<SUI> {
+    assert!(self.schedule_finalized, errors::invalid_state());
+    assert!(self.balance.value() >= amount, errors::insufficient_balance());
+    
+    coin::from_balance(self.balance.split(amount), ctx)
+}
+
+/// Return staked capital to the vault (after unstaking).
+/// Used to prepare capital for tranche releases.
+/// 
+/// Flow: unstake_all() → return_to_vault() → release_next_tranche()
+public(package) fun return_from_staking(
+    self: &mut CapitalVault,
+    coin: Coin<SUI>,
+) {
+    self.balance.join(coin.into_balance());
+}
+
 // === View Functions ===
 
 /// Get vault ID.

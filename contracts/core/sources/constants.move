@@ -14,7 +14,8 @@ public macro fun max_bps(): u64 { 10_000 }
 
 /// Protocol version for upgrade compatibility.
 /// v2: Fixed share calculation (no PRECISION scaling) + 1e18 precision for reward index
-public macro fun version(): u64 { 2 }
+/// v3: Productive capital - stake locked capital from CapitalVault
+public macro fun version(): u64 { 3 }
 
 // === Fee Constants ===
 

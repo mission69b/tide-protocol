@@ -93,7 +93,7 @@ Represents an active capital raise.
 - Issuer address
 - References to CapitalVault and RewardVault
 - Lifecycle state:
-  - `draft → active → finalized → completed`
+    - `draft → active → finalized → completed`
 - Deterministic release schedule parameters
 - Pause flag (per-listing)
 

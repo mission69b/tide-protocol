@@ -663,6 +663,90 @@ public fun withdraw_staking_balance(
     staking_adapter.withdraw(amount, ctx)
 }
 
+// === Productive Capital Functions ===
+
+/// Stake locked capital from the CapitalVault.
+/// Council-gated. Moves capital from vault → staking adapter → validator.
+/// 
+/// This enables "productive capital" - locked capital earns yield while
+/// waiting for tranche releases.
+/// 
+/// IMPORTANT: Before releasing tranches, capital must be returned to vault:
+///   1. unstake_all() → get Coin<SUI>
+///   2. return_to_vault(coin)
+///   3. release_next_ready_tranche()
+public fun stake_locked_capital(
+    self: &Listing,
+    tide: &Tide,
+    _council_cap: &CouncilCap,
+    capital_vault: &mut CapitalVault,
+    staking_adapter: &mut StakingAdapter,
+    amount: u64,
+    system_state: &mut SuiSystemState,
+    ctx: &mut TxContext,
+) {
+    tide.assert_not_paused();
+    assert!(!self.paused, errors::paused());
+    assert!(capital_vault.listing_id() == self.id.to_inner(), errors::invalid_state());
+    assert!(staking_adapter.listing_id() == self.id.to_inner(), errors::invalid_state());
+    
+    // Withdraw from vault
+    let coin = capital_vault.withdraw_for_staking(amount, ctx);
+    
+    // Deposit to staking adapter and stake
+    staking_adapter.deposit(coin);
+    staking_adapter.stake(system_state, ctx);
+}
+
+/// Stake all available capital from the CapitalVault.
+/// Convenience function that stakes the entire vault balance.
+public fun stake_all_locked_capital(
+    self: &Listing,
+    tide: &Tide,
+    _council_cap: &CouncilCap,
+    capital_vault: &mut CapitalVault,
+    staking_adapter: &mut StakingAdapter,
+    system_state: &mut SuiSystemState,
+    ctx: &mut TxContext,
+) {
+    tide.assert_not_paused();
+    assert!(!self.paused, errors::paused());
+    assert!(capital_vault.listing_id() == self.id.to_inner(), errors::invalid_state());
+    assert!(staking_adapter.listing_id() == self.id.to_inner(), errors::invalid_state());
+    
+    let amount = capital_vault.balance();
+    if (amount == 0) return;
+    
+    // Withdraw all from vault
+    let coin = capital_vault.withdraw_for_staking(amount, ctx);
+    
+    // Deposit to staking adapter and stake
+    staking_adapter.deposit(coin);
+    staking_adapter.stake(system_state, ctx);
+}
+
+/// Return unstaked capital to the vault.
+/// Call this after unstake_all() to prepare for tranche release.
+/// 
+/// Typical flow before monthly tranche:
+///   1. unstake_all() → returns Coin<SUI>
+///   2. return_to_vault(coin) → capital back in vault
+///   3. release_next_ready_tranche() → issuer gets tranche
+///   4. stake_all_locked_capital() → re-stake remaining
+public fun return_to_vault(
+    self: &Listing,
+    tide: &Tide,
+    _council_cap: &CouncilCap,
+    capital_vault: &mut CapitalVault,
+    coin: Coin<SUI>,
+) {
+    tide.assert_not_paused();
+    assert!(!self.paused, errors::paused());
+    assert!(capital_vault.listing_id() == self.id.to_inner(), errors::invalid_state());
+    
+    capital_vault.return_from_staking(coin);
+}
+
 // === View Functions ===
 
 /// Get listing ID.

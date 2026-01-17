@@ -9,13 +9,23 @@ This document explains the **adapter pattern** for integrating external protocol
 When a protocol (e.g., FAITH) wants to share revenue with its backers through Tide, it uses an **adapter contract** as the integration layer.
 
 ```
-┌─────────────────┐      route()       ┌─────────────────┐    deposit_rewards()    ┌─────────────────┐
-│    Protocol     │ ─────────────────→ │     Adapter     │ ──────────────────────→ │   RewardVault   │
-│   (e.g. FAITH)  │                    │ (e.g. FaithRouter)                        │   (Tide Core)   │
-└─────────────────┘                    └─────────────────┘                         └─────────────────┘
+                              ┌─────────────────────────────────────────┐
+                              │           FaithRouter (Adapter)          │
+                              │                                         │
+┌─────────────────┐           │  ┌───────────────────────────────────┐  │           ┌─────────────────┐
+│    Protocol     │  route()  │  │      RouteCapability (stored)     │  │           │   RewardVault   │
+│   (e.g. FAITH)  │ ────────→ │  └───────────────────────────────────┘  │ ────────→ │   (Tide Core)   │
+└─────────────────┘           │                    │                    │           └─────────────────┘
+                              │      ┌─────────────┴─────────────┐      │
+                              │      ▼                           ▼      │
+                              │  route()              harvest_and_route()
+                              │  (protocol revenue)   (staking rewards) │
+                              └─────────────────────────────────────────┘
 ```
 
-**Key principle**: The protocol doesn't interact with Tide directly. The adapter handles all Tide integration logic.
+**Key principle**: The protocol doesn't interact with Tide directly. The adapter handles all Tide integration logic, including:
+- **Protocol revenue routing** via `route()`
+- **Staking reward harvesting** via `harvest_and_route()`
 
 ---
 
@@ -149,7 +159,11 @@ module my_protocol_router::router;
 
 use sui::coin::Coin;
 use sui::sui::SUI;
+use sui_system::sui_system::SuiSystemState;
 use tide_core::reward_vault::{RewardVault, RouteCapability};
+use tide_core::listing::Listing;
+use tide_core::tide::Tide;
+use tide_core::staking_adapter::StakingAdapter;
 use tide_core::constants;
 
 // === Errors ===
@@ -205,7 +219,7 @@ public fun new(
     (router, cap)
 }
 
-// === Routing ===
+// === Revenue Routing ===
 
 /// Route revenue to the Tide RewardVault.
 /// Called by the protocol when collecting fees.
@@ -230,6 +244,45 @@ public fun route(
     // Update lifetime stats
     self.total_routed = self.total_routed + amount;
 }
+
+// === Staking Integration ===
+
+/// Harvest staking rewards and route backer share to RewardVault.
+/// 
+/// This function allows the adapter to handle staking reward distribution
+/// using its stored RouteCapability. The rewards are split 80/20:
+/// - 80% → RewardVault (for backers to claim)
+/// - 20% → Treasury
+/// 
+/// Should be called periodically (e.g., every epoch) by a keeper.
+public fun harvest_and_route(
+    self: &mut MyRouter,
+    listing: &Listing,
+    tide: &Tide,
+    staking_adapter: &mut StakingAdapter,
+    reward_vault: &mut RewardVault,
+    system_state: &mut SuiSystemState,
+    ctx: &mut TxContext,
+) {
+    // Borrow the stored RouteCapability
+    let route_cap = sui::dynamic_field::borrow<vector<u8>, RouteCapability>(
+        &self.id,
+        b"route_cap",
+    );
+    
+    // Call listing's harvest function which handles the 80/20 split
+    tide_core::listing::harvest_staking_rewards(
+        listing,
+        tide,
+        staking_adapter,
+        reward_vault,
+        route_cap,
+        system_state,
+        ctx,
+    );
+}
+
+// === Helpers ===
 
 /// Calculate revenue amount from total fees.
 /// Helper for the protocol to determine how much to route.
@@ -271,6 +324,8 @@ contracts/adapters/faith_router/
 - `revenue_bps`: Set to 1000 (10% of FAITH fees)
 - `total_routed`: Tracks lifetime revenue for frontend display
 - `calculate_revenue()`: Helper for FAITH to compute the 10%
+- `route()`: Routes protocol revenue to RewardVault
+- `harvest_and_route()`: Harvests staking rewards and routes 80% to backers
 
 **Deployment:**
 ```bash
@@ -289,6 +344,20 @@ sui client ptb \
   --move-call "pkg::faith_router::share" result.0 \
   --move-call "pkg::faith_router::transfer_cap" result.1 me \
   --gas-budget 50000000
+```
+
+**Harvest Staking Rewards:**
+```bash
+sui client ptb \
+  --assign pkg @<FAITH_ROUTER_PKG> \
+  --assign router @<FAITH_ROUTER_ID> \
+  --assign listing @<LISTING_ID> \
+  --assign tide @<TIDE_ID> \
+  --assign staking_adapter @<STAKING_ADAPTER_ID> \
+  --assign reward_vault @<REWARD_VAULT_ID> \
+  --assign system_state @0x5 \
+  --move-call "pkg::faith_router::harvest_and_route" router listing tide staking_adapter reward_vault system_state \
+  --gas-budget 100000000
 ```
 
 ---

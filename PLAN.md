@@ -659,11 +659,13 @@ public struct ListingConfig has copy, drop, store {
 - Revenue percentage immutable
 - Routes only to RewardVault
 - Emits RouteIn events
+- Handles both protocol revenue AND staking reward harvesting
 
 **Tasks:**
 - [x] Define structs
 - [x] Implement route function
 - [x] Implement share/transfer_cap functions
+- [x] Implement harvest_and_route function (staking integration)
 - [x] Write routing tests (via E2E tests using RouteCapability)
 
 **Estimated complexity:** Medium
