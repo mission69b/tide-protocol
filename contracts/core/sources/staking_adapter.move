@@ -104,6 +104,18 @@ public(package) fun set_enabled(
     enabled: bool,
 ) {
     self.enabled = enabled;
+    events::emit_staking_enabled_changed(self.listing_id, enabled);
+}
+
+/// Update the validator address for future stakes.
+/// Existing stakes remain with the old validator until unstaked.
+public(package) fun set_validator(
+    self: &mut StakingAdapter,
+    new_validator: address,
+) {
+    let old_validator = self.validator;
+    self.validator = new_validator;
+    events::emit_validator_updated(self.listing_id, old_validator, new_validator);
 }
 
 // === Staking Operations ===

@@ -86,7 +86,29 @@ public fun set_treasury(
     new_treasury: address,
     _ctx: &mut TxContext,
 ) {
+    let old_treasury = self.treasury;
     self.treasury = new_treasury;
+    events::emit_treasury_updated(old_treasury, new_treasury);
+}
+
+/// Transfer AdminCap to a new holder (admin rotation).
+/// This is a one-way transfer - the sender loses admin rights.
+public fun transfer_admin_cap(
+    cap: AdminCap,
+    new_admin: address,
+    ctx: &TxContext,
+) {
+    sui::event::emit(AdminCapTransferred {
+        from: ctx.sender(),
+        to: new_admin,
+    });
+    transfer::public_transfer(cap, new_admin);
+}
+
+/// Event emitted when AdminCap is transferred.
+public struct AdminCapTransferred has copy, drop {
+    from: address,
+    to: address,
 }
 
 // === View Functions ===

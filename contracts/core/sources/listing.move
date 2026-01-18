@@ -150,6 +150,17 @@ public fun new(
     
     let route_cap = reward_vault::create_route_capability(listing_id, ctx);
     
+    // Emit ListingCreated event
+    events::emit_listing_created(
+        listing_id,
+        listing_number,
+        issuer,
+        config_hash,
+        constants::min_deposit!(),
+        constants::raise_fee_bps!(),
+        constants::staking_backer_bps!(),
+    );
+    
     (listing, capital_vault, reward_vault, staking_adapter, listing_cap, route_cap)
 }
 
@@ -171,6 +182,7 @@ public fun activate(
     self.activation_time = clock.timestamp_ms();
     
     events::emit_state_changed(self.id.to_inner(), old_state, self.state);
+    events::emit_listing_activated(self.id.to_inner(), self.activation_time);
 }
 
 /// Finalize the listing, stopping new deposits and computing release schedule.
@@ -191,6 +203,14 @@ public fun finalize(
     self.state = constants::state_finalized!();
     
     events::emit_state_changed(self.id.to_inner(), old_state, self.state);
+    events::emit_listing_finalized(
+        self.id.to_inner(),
+        clock.timestamp_ms(),
+        capital_vault.total_principal(),
+        self.total_backers,
+        capital_vault.total_shares(),
+        capital_vault.num_tranches(),
+    );
 }
 
 /// Finalize the listing and release the initial 20% tranche.
@@ -222,6 +242,7 @@ public fun complete(
     self: &mut Listing,
     _council_cap: &CouncilCap,
     capital_vault: &CapitalVault,
+    reward_vault: &RewardVault,
     _ctx: &mut TxContext,
 ) {
     assert!(self.state == constants::state_finalized!(), errors::invalid_state());
@@ -231,6 +252,11 @@ public fun complete(
     self.state = constants::state_completed!();
     
     events::emit_state_changed(self.id.to_inner(), old_state, self.state);
+    events::emit_listing_completed(
+        self.id.to_inner(),
+        capital_vault.cumulative_released(),
+        reward_vault.total_distributed(),
+    );
 }
 
 // === Pause Control (Council-Gated) ===
@@ -365,9 +391,13 @@ public fun collect_raise_fee(
     
     let treasury = tide.treasury();
     let fee_coin = capital_vault.collect_raise_fee(treasury, ctx);
+    let fee_amount = fee_coin.value();
     
     // Transfer fee to treasury
     transfer::public_transfer(fee_coin, treasury);
+    
+    // Emit TreasuryPayment event (payment_type 0 = raise fee)
+    events::emit_treasury_payment(self.id.to_inner(), 0, fee_amount, treasury);
 }
 
 /// Release a specific tranche by index.
@@ -635,7 +665,12 @@ public fun harvest_staking_rewards(
         
         // Transfer treasury portion
         if (treasury_coin.value() > 0) {
-            transfer::public_transfer(treasury_coin, tide.treasury());
+            let treasury_addr = tide.treasury();
+            let treasury_payment = treasury_coin.value();
+            transfer::public_transfer(treasury_coin, treasury_addr);
+            
+            // Emit TreasuryPayment event (payment_type 1 = staking split)
+            events::emit_treasury_payment(self.id.to_inner(), 1, treasury_payment, treasury_addr);
         } else {
             treasury_coin.destroy_zero();
         };
@@ -745,6 +780,40 @@ public fun return_to_vault(
     assert!(capital_vault.listing_id() == self.id.to_inner(), errors::invalid_state());
     
     capital_vault.return_from_staking(coin);
+}
+
+// === Staking Configuration (Council-Gated) ===
+
+/// Enable or disable staking for this listing.
+/// When disabled, no new stakes will be created.
+/// Existing stakes remain until explicitly unstaked.
+public fun set_staking_enabled(
+    self: &Listing,
+    tide: &Tide,
+    _council_cap: &CouncilCap,
+    staking_adapter: &mut StakingAdapter,
+    enabled: bool,
+) {
+    tide.assert_not_paused();
+    assert!(staking_adapter.listing_id() == self.id.to_inner(), errors::invalid_state());
+    
+    staking_adapter.set_enabled(enabled);
+}
+
+/// Update the validator address for future stakes.
+/// Existing stakes remain with the old validator until unstaked.
+/// Use this to migrate to a different validator if needed.
+public fun set_staking_validator(
+    self: &Listing,
+    tide: &Tide,
+    _council_cap: &CouncilCap,
+    staking_adapter: &mut StakingAdapter,
+    new_validator: address,
+) {
+    tide.assert_not_paused();
+    assert!(staking_adapter.listing_id() == self.id.to_inner(), errors::invalid_state());
+    
+    staking_adapter.set_validator(new_validator);
 }
 
 // === View Functions ===

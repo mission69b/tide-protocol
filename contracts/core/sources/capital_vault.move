@@ -198,6 +198,21 @@ public(package) fun finalize_schedule(
     };
     
     self.schedule_finalized = true;
+    
+    // Emit ScheduleFinalized event
+    let first_monthly_release_time = finalization_time + tranche_interval;
+    let final_release_time = finalization_time + (monthly_count * tranche_interval);
+    
+    events::emit_schedule_finalized(
+        self.listing_id,
+        finalization_time,
+        self.total_principal,
+        (initial_amount as u64),
+        monthly_amount,
+        monthly_count,
+        first_monthly_release_time,
+        final_release_time,
+    );
 }
 
 /// Accept a deposit and calculate shares.

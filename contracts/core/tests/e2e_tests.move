@@ -570,3 +570,874 @@ fun test_claims_allowed_when_paused() {
     
     ts::end(scenario);
 }
+
+#[test]
+fun test_per_listing_pause() {
+    let mut scenario = ts::begin(ADMIN);
+    
+    // Setup, activate, deposit
+    setup_protocol(&mut scenario);
+    create_listing(&mut scenario);
+    activate_listing(&mut scenario);
+    backer_deposit(&mut scenario, BACKER1, 100_000_000_000);
+    
+    // Route some revenue
+    ts::next_tx(&mut scenario, ISSUER);
+    {
+        let mut reward_vault = ts::take_shared<RewardVault>(&scenario);
+        let route_cap = ts::take_from_sender<RouteCapability>(&scenario);
+        
+        let revenue = coin::mint_for_testing<SUI>(100_000_000_000, ts::ctx(&mut scenario));
+        reward_vault.deposit_rewards(&route_cap, revenue, ts::ctx(&mut scenario));
+        
+        ts::return_shared(reward_vault);
+        transfer::public_transfer(route_cap, ISSUER);
+    };
+    
+    // Council pauses the LISTING (not protocol)
+    ts::next_tx(&mut scenario, ADMIN);
+    {
+        let mut listing = ts::take_shared<Listing>(&scenario);
+        let council_cap = ts::take_from_sender<CouncilCap>(&scenario);
+        
+        listing.pause(&council_cap);
+        assert!(listing.is_paused());
+        
+        ts::return_shared(listing);
+        transfer::public_transfer(council_cap, ADMIN);
+    };
+    
+    // Backer can STILL claim even when listing is paused (per spec)
+    ts::next_tx(&mut scenario, BACKER1);
+    {
+        let listing = ts::take_shared<Listing>(&scenario);
+        let tide = ts::take_shared<Tide>(&scenario);
+        let mut reward_vault = ts::take_shared<RewardVault>(&scenario);
+        let mut pass = ts::take_from_sender<SupporterPass>(&scenario);
+        
+        // Listing is paused but claims still work
+        assert!(listing.is_paused());
+        
+        let reward = listing.claim(&tide, &mut reward_vault, &mut pass, ts::ctx(&mut scenario));
+        assert!(reward.value() > 0);
+        
+        coin::burn_for_testing(reward);
+        ts::return_to_sender(&scenario, pass);
+        ts::return_shared(tide);
+        ts::return_shared(listing);
+        ts::return_shared(reward_vault);
+    };
+    
+    // Council resumes the listing
+    ts::next_tx(&mut scenario, ADMIN);
+    {
+        let mut listing = ts::take_shared<Listing>(&scenario);
+        let council_cap = ts::take_from_sender<CouncilCap>(&scenario);
+        
+        listing.resume(&council_cap);
+        assert!(!listing.is_paused());
+        
+        ts::return_shared(listing);
+        transfer::public_transfer(council_cap, ADMIN);
+    };
+    
+    ts::end(scenario);
+}
+
+#[test]
+fun test_staking_adapter_deposit_withdraw() {
+    let mut scenario = ts::begin(ADMIN);
+    
+    // Setup, activate, and deposit
+    setup_protocol(&mut scenario);
+    create_listing(&mut scenario);
+    activate_listing(&mut scenario);
+    
+    // Verify staking adapter initial state
+    ts::next_tx(&mut scenario, ADMIN);
+    {
+        let staking = ts::take_shared<staking_adapter::StakingAdapter>(&scenario);
+        assert!(staking.pending_balance() == 0);
+        assert!(staking.staked_principal() == 0);
+        assert!(staking.total_capital() == 0);
+        ts::return_shared(staking);
+    };
+    
+    // Deposit funds to staking adapter
+    ts::next_tx(&mut scenario, ADMIN);
+    {
+        let mut staking = ts::take_shared<staking_adapter::StakingAdapter>(&scenario);
+        
+        staking_adapter::deposit_for_testing(&mut staking, 50_000_000_000, ts::ctx(&mut scenario));
+        
+        assert!(staking.pending_balance() == 50_000_000_000);
+        assert!(staking.total_capital() == 50_000_000_000);
+        
+        ts::return_shared(staking);
+    };
+    
+    // Withdraw part of the funds
+    ts::next_tx(&mut scenario, ADMIN);
+    {
+        let mut staking = ts::take_shared<staking_adapter::StakingAdapter>(&scenario);
+        
+        let withdrawn = staking_adapter::withdraw(&mut staking, 20_000_000_000, ts::ctx(&mut scenario));
+        
+        assert!(withdrawn.value() == 20_000_000_000);
+        assert!(staking.pending_balance() == 30_000_000_000);
+        
+        coin::burn_for_testing(withdrawn);
+        ts::return_shared(staking);
+    };
+    
+    ts::end(scenario);
+}
+
+#[test]
+fun test_staking_adapter_listing_link() {
+    let mut scenario = ts::begin(ADMIN);
+    
+    // Setup
+    setup_protocol(&mut scenario);
+    create_listing(&mut scenario);
+    
+    // Verify staking adapter is linked to listing
+    ts::next_tx(&mut scenario, ADMIN);
+    {
+        let listing = ts::take_shared<Listing>(&scenario);
+        let staking = ts::take_shared<staking_adapter::StakingAdapter>(&scenario);
+        
+        // Staking adapter's listing_id should match listing's ID
+        assert!(staking.listing_id() == listing.id());
+        
+        // Validator should be set to the one passed during listing creation
+        assert!(staking.validator() == VALIDATOR);
+        
+        ts::return_shared(listing);
+        ts::return_shared(staking);
+    };
+    
+    ts::end(scenario);
+}
+
+#[test]
+fun test_staking_reward_split_calculation() {
+    let mut scenario = ts::begin(ADMIN);
+    
+    setup_protocol(&mut scenario);
+    create_listing(&mut scenario);
+    
+    ts::next_tx(&mut scenario, ADMIN);
+    {
+        let staking = ts::take_shared<staking_adapter::StakingAdapter>(&scenario);
+        
+        // Create 100 SUI rewards
+        let rewards = coin::mint_for_testing<SUI>(100_000_000_000, ts::ctx(&mut scenario));
+        
+        // Split rewards (80% backer, 20% treasury per constants)
+        let (backer_coin, treasury_coin) = staking_adapter::split_rewards(
+            &staking,
+            rewards,
+            ts::ctx(&mut scenario),
+        );
+        
+        // Verify 80/20 split
+        assert!(backer_coin.value() == 80_000_000_000); // 80 SUI
+        assert!(treasury_coin.value() == 20_000_000_000); // 20 SUI
+        
+        coin::burn_for_testing(backer_coin);
+        coin::burn_for_testing(treasury_coin);
+        ts::return_shared(staking);
+    };
+    
+    ts::end(scenario);
+}
+
+#[test]
+fun test_staking_multiple_deposits() {
+    let mut scenario = ts::begin(ADMIN);
+    
+    setup_protocol(&mut scenario);
+    create_listing(&mut scenario);
+    
+    // Multiple deposits accumulate
+    ts::next_tx(&mut scenario, ADMIN);
+    {
+        let mut staking = ts::take_shared<staking_adapter::StakingAdapter>(&scenario);
+        
+        // First deposit
+        staking_adapter::deposit_for_testing(&mut staking, 10_000_000_000, ts::ctx(&mut scenario));
+        assert!(staking.pending_balance() == 10_000_000_000);
+        
+        // Second deposit
+        staking_adapter::deposit_for_testing(&mut staking, 25_000_000_000, ts::ctx(&mut scenario));
+        assert!(staking.pending_balance() == 35_000_000_000);
+        
+        // Third deposit
+        staking_adapter::deposit_for_testing(&mut staking, 15_000_000_000, ts::ctx(&mut scenario));
+        assert!(staking.pending_balance() == 50_000_000_000);
+        
+        // Total capital check
+        assert!(staking.total_capital() == 50_000_000_000);
+        
+        ts::return_shared(staking);
+    };
+    
+    ts::end(scenario);
+}
+
+#[test]
+fun test_staking_enable_disable() {
+    let mut scenario = ts::begin(ADMIN);
+    
+    // Setup and activate
+    setup_protocol(&mut scenario);
+    create_listing(&mut scenario);
+    activate_listing(&mut scenario);
+    
+    // Verify staking is enabled by default
+    ts::next_tx(&mut scenario, ADMIN);
+    {
+        let staking = ts::take_shared<staking_adapter::StakingAdapter>(&scenario);
+        assert!(staking.is_enabled());
+        ts::return_shared(staking);
+    };
+    
+    // Council disables staking
+    ts::next_tx(&mut scenario, ADMIN);
+    {
+        let listing = ts::take_shared<Listing>(&scenario);
+        let tide = ts::take_shared<Tide>(&scenario);
+        let council_cap = ts::take_from_sender<CouncilCap>(&scenario);
+        let mut staking = ts::take_shared<staking_adapter::StakingAdapter>(&scenario);
+        
+        listing.set_staking_enabled(&tide, &council_cap, &mut staking, false);
+        assert!(!staking.is_enabled());
+        
+        ts::return_shared(listing);
+        ts::return_shared(tide);
+        ts::return_shared(staking);
+        transfer::public_transfer(council_cap, ADMIN);
+    };
+    
+    // Council re-enables staking
+    ts::next_tx(&mut scenario, ADMIN);
+    {
+        let listing = ts::take_shared<Listing>(&scenario);
+        let tide = ts::take_shared<Tide>(&scenario);
+        let council_cap = ts::take_from_sender<CouncilCap>(&scenario);
+        let mut staking = ts::take_shared<staking_adapter::StakingAdapter>(&scenario);
+        
+        listing.set_staking_enabled(&tide, &council_cap, &mut staking, true);
+        assert!(staking.is_enabled());
+        
+        ts::return_shared(listing);
+        ts::return_shared(tide);
+        ts::return_shared(staking);
+        transfer::public_transfer(council_cap, ADMIN);
+    };
+    
+    ts::end(scenario);
+}
+
+// === Deposit Flow Edge Cases ===
+
+#[test]
+#[expected_failure(abort_code = 1, location = tide_core::listing)]  // errors::paused()
+fun test_deposit_blocked_when_listing_paused() {
+    let mut scenario = ts::begin(ADMIN);
+    
+    // Setup and activate
+    setup_protocol(&mut scenario);
+    create_listing(&mut scenario);
+    activate_listing(&mut scenario);
+    
+    // Council pauses the listing
+    ts::next_tx(&mut scenario, ADMIN);
+    {
+        let mut listing = ts::take_shared<Listing>(&scenario);
+        let council_cap = ts::take_from_sender<CouncilCap>(&scenario);
+        
+        listing.pause(&council_cap);
+        
+        ts::return_shared(listing);
+        transfer::public_transfer(council_cap, ADMIN);
+    };
+    
+    // Backer tries to deposit - should fail
+    ts::next_tx(&mut scenario, BACKER1);
+    {
+        let mut listing = ts::take_shared<Listing>(&scenario);
+        let tide = ts::take_shared<Tide>(&scenario);
+        let mut capital_vault = ts::take_shared<CapitalVault>(&scenario);
+        let mut reward_vault = ts::take_shared<RewardVault>(&scenario);
+        let clock = clock::create_for_testing(ts::ctx(&mut scenario));
+        
+        let deposit = coin::mint_for_testing<SUI>(10_000_000_000, ts::ctx(&mut scenario));
+        let pass = listing.deposit(
+            &tide,
+            &mut capital_vault,
+            &mut reward_vault,
+            deposit,
+            &clock,
+            ts::ctx(&mut scenario),
+        );
+        
+        transfer::public_transfer(pass, BACKER1);
+        
+        clock::destroy_for_testing(clock);
+        ts::return_shared(listing);
+        ts::return_shared(tide);
+        ts::return_shared(capital_vault);
+        ts::return_shared(reward_vault);
+    };
+    
+    ts::end(scenario);
+}
+
+#[test]
+#[expected_failure(abort_code = 0, location = tide_core::listing)]  // errors::not_active()
+fun test_deposit_blocked_in_draft_state() {
+    let mut scenario = ts::begin(ADMIN);
+    
+    // Setup but DON'T activate
+    setup_protocol(&mut scenario);
+    create_listing(&mut scenario);
+    // Note: listing is in DRAFT state
+    
+    // Backer tries to deposit - should fail
+    ts::next_tx(&mut scenario, BACKER1);
+    {
+        let mut listing = ts::take_shared<Listing>(&scenario);
+        let tide = ts::take_shared<Tide>(&scenario);
+        let mut capital_vault = ts::take_shared<CapitalVault>(&scenario);
+        let mut reward_vault = ts::take_shared<RewardVault>(&scenario);
+        let clock = clock::create_for_testing(ts::ctx(&mut scenario));
+        
+        // Listing is in Draft state, deposit should fail
+        assert!(listing.state() == constants::state_draft!());
+        
+        let deposit = coin::mint_for_testing<SUI>(10_000_000_000, ts::ctx(&mut scenario));
+        let pass = listing.deposit(
+            &tide,
+            &mut capital_vault,
+            &mut reward_vault,
+            deposit,
+            &clock,
+            ts::ctx(&mut scenario),
+        );
+        
+        transfer::public_transfer(pass, BACKER1);
+        
+        clock::destroy_for_testing(clock);
+        ts::return_shared(listing);
+        ts::return_shared(tide);
+        ts::return_shared(capital_vault);
+        ts::return_shared(reward_vault);
+    };
+    
+    ts::end(scenario);
+}
+
+#[test]
+#[expected_failure(abort_code = 0, location = tide_core::listing)]  // errors::not_active()
+fun test_deposit_blocked_in_finalized_state() {
+    let mut scenario = ts::begin(ADMIN);
+    
+    // Setup, activate, deposit, then finalize
+    setup_protocol(&mut scenario);
+    create_listing(&mut scenario);
+    activate_listing(&mut scenario);
+    backer_deposit(&mut scenario, BACKER1, 10_000_000_000);
+    
+    // Finalize the listing
+    ts::next_tx(&mut scenario, ADMIN);
+    {
+        let mut listing = ts::take_shared<Listing>(&scenario);
+        let council_cap = ts::take_from_sender<CouncilCap>(&scenario);
+        let mut capital_vault = ts::take_shared<CapitalVault>(&scenario);
+        let clock = clock::create_for_testing(ts::ctx(&mut scenario));
+        
+        listing.finalize(&council_cap, &mut capital_vault, &clock, ts::ctx(&mut scenario));
+        
+        clock::destroy_for_testing(clock);
+        ts::return_shared(listing);
+        ts::return_shared(capital_vault);
+        transfer::public_transfer(council_cap, ADMIN);
+    };
+    
+    // Backer2 tries to deposit after finalization - should fail
+    ts::next_tx(&mut scenario, BACKER2);
+    {
+        let mut listing = ts::take_shared<Listing>(&scenario);
+        let tide = ts::take_shared<Tide>(&scenario);
+        let mut capital_vault = ts::take_shared<CapitalVault>(&scenario);
+        let mut reward_vault = ts::take_shared<RewardVault>(&scenario);
+        let clock = clock::create_for_testing(ts::ctx(&mut scenario));
+        
+        assert!(listing.state() == constants::state_finalized!());
+        
+        let deposit = coin::mint_for_testing<SUI>(10_000_000_000, ts::ctx(&mut scenario));
+        let pass = listing.deposit(
+            &tide,
+            &mut capital_vault,
+            &mut reward_vault,
+            deposit,
+            &clock,
+            ts::ctx(&mut scenario),
+        );
+        
+        transfer::public_transfer(pass, BACKER2);
+        
+        clock::destroy_for_testing(clock);
+        ts::return_shared(listing);
+        ts::return_shared(tide);
+        ts::return_shared(capital_vault);
+        ts::return_shared(reward_vault);
+    };
+    
+    ts::end(scenario);
+}
+
+// === Claim Flow Edge Cases ===
+
+#[test]
+#[expected_failure(abort_code = 3, location = tide_core::listing)]  // errors::nothing_to_claim() = 3
+fun test_claim_nothing_to_claim() {
+    let mut scenario = ts::begin(ADMIN);
+    
+    // Setup, activate, deposit - but NO revenue routed
+    setup_protocol(&mut scenario);
+    create_listing(&mut scenario);
+    activate_listing(&mut scenario);
+    backer_deposit(&mut scenario, BACKER1, 10_000_000_000);
+    
+    // Backer tries to claim with no revenue routed
+    ts::next_tx(&mut scenario, BACKER1);
+    {
+        let listing = ts::take_shared<Listing>(&scenario);
+        let tide = ts::take_shared<Tide>(&scenario);
+        let mut reward_vault = ts::take_shared<RewardVault>(&scenario);
+        let mut pass = ts::take_from_sender<SupporterPass>(&scenario);
+        
+        // No rewards deposited, should fail
+        let reward = listing.claim(&tide, &mut reward_vault, &mut pass, ts::ctx(&mut scenario));
+        
+        coin::burn_for_testing(reward);
+        ts::return_to_sender(&scenario, pass);
+        ts::return_shared(tide);
+        ts::return_shared(listing);
+        ts::return_shared(reward_vault);
+    };
+    
+    ts::end(scenario);
+}
+
+#[test]
+#[expected_failure(abort_code = 3, location = tide_core::listing)]  // errors::nothing_to_claim() = 3
+fun test_double_claim_fails() {
+    let mut scenario = ts::begin(ADMIN);
+    
+    // Setup, activate, deposit, route revenue
+    setup_protocol(&mut scenario);
+    create_listing(&mut scenario);
+    activate_listing(&mut scenario);
+    backer_deposit(&mut scenario, BACKER1, 100_000_000_000);
+    
+    // Route revenue
+    ts::next_tx(&mut scenario, ISSUER);
+    {
+        let mut reward_vault = ts::take_shared<RewardVault>(&scenario);
+        let route_cap = ts::take_from_sender<RouteCapability>(&scenario);
+        
+        let revenue = coin::mint_for_testing<SUI>(100_000_000_000, ts::ctx(&mut scenario));
+        reward_vault.deposit_rewards(&route_cap, revenue, ts::ctx(&mut scenario));
+        
+        ts::return_shared(reward_vault);
+        transfer::public_transfer(route_cap, ISSUER);
+    };
+    
+    // First claim - should succeed
+    ts::next_tx(&mut scenario, BACKER1);
+    {
+        let listing = ts::take_shared<Listing>(&scenario);
+        let tide = ts::take_shared<Tide>(&scenario);
+        let mut reward_vault = ts::take_shared<RewardVault>(&scenario);
+        let mut pass = ts::take_from_sender<SupporterPass>(&scenario);
+        
+        let reward = listing.claim(&tide, &mut reward_vault, &mut pass, ts::ctx(&mut scenario));
+        assert!(reward.value() > 0);
+        
+        coin::burn_for_testing(reward);
+        ts::return_to_sender(&scenario, pass);
+        ts::return_shared(tide);
+        ts::return_shared(listing);
+        ts::return_shared(reward_vault);
+    };
+    
+    // Second claim - should fail (nothing to claim)
+    ts::next_tx(&mut scenario, BACKER1);
+    {
+        let listing = ts::take_shared<Listing>(&scenario);
+        let tide = ts::take_shared<Tide>(&scenario);
+        let mut reward_vault = ts::take_shared<RewardVault>(&scenario);
+        let mut pass = ts::take_from_sender<SupporterPass>(&scenario);
+        
+        // Already claimed, index is up to date, claimable should be 0
+        let reward = listing.claim(&tide, &mut reward_vault, &mut pass, ts::ctx(&mut scenario));
+        
+        coin::burn_for_testing(reward);
+        ts::return_to_sender(&scenario, pass);
+        ts::return_shared(tide);
+        ts::return_shared(listing);
+        ts::return_shared(reward_vault);
+    };
+    
+    ts::end(scenario);
+}
+
+// === Lifecycle State Tests ===
+
+#[test]
+fun test_listing_complete_lifecycle() {
+    let mut scenario = ts::begin(ADMIN);
+    
+    // Setup
+    setup_protocol(&mut scenario);
+    create_listing(&mut scenario);
+    
+    // Verify Draft state
+    ts::next_tx(&mut scenario, ADMIN);
+    {
+        let listing = ts::take_shared<Listing>(&scenario);
+        assert!(listing.state() == constants::state_draft!());
+        ts::return_shared(listing);
+    };
+    
+    // Activate
+    activate_listing(&mut scenario);
+    
+    // Verify Active state
+    ts::next_tx(&mut scenario, ADMIN);
+    {
+        let listing = ts::take_shared<Listing>(&scenario);
+        assert!(listing.state() == constants::state_active!());
+        ts::return_shared(listing);
+    };
+    
+    // Deposit
+    backer_deposit(&mut scenario, BACKER1, 10_000_000_000);
+    
+    // Finalize
+    ts::next_tx(&mut scenario, ADMIN);
+    {
+        let mut listing = ts::take_shared<Listing>(&scenario);
+        let council_cap = ts::take_from_sender<CouncilCap>(&scenario);
+        let mut capital_vault = ts::take_shared<CapitalVault>(&scenario);
+        let clock = clock::create_for_testing(ts::ctx(&mut scenario));
+        
+        listing.finalize(&council_cap, &mut capital_vault, &clock, ts::ctx(&mut scenario));
+        
+        clock::destroy_for_testing(clock);
+        ts::return_shared(listing);
+        ts::return_shared(capital_vault);
+        transfer::public_transfer(council_cap, ADMIN);
+    };
+    
+    // Verify Finalized state
+    ts::next_tx(&mut scenario, ADMIN);
+    {
+        let listing = ts::take_shared<Listing>(&scenario);
+        assert!(listing.state() == constants::state_finalized!());
+        ts::return_shared(listing);
+    };
+    
+    // Collect fee and release all tranches
+    ts::next_tx(&mut scenario, ISSUER);
+    {
+        let listing = ts::take_shared<Listing>(&scenario);
+        let tide = ts::take_shared<Tide>(&scenario);
+        let mut capital_vault = ts::take_shared<CapitalVault>(&scenario);
+        let mut clock = clock::create_for_testing(ts::ctx(&mut scenario));
+        
+        // Collect raise fee
+        listing.collect_raise_fee(&tide, &mut capital_vault, ts::ctx(&mut scenario));
+        
+        // Release all tranches (simulate time passing)
+        let num_tranches = capital_vault.num_tranches();
+        let mut i = 0u64;
+        let mut current_time = clock.timestamp_ms();
+        while (i < num_tranches) {
+            // Fast forward time to make tranche ready
+            current_time = current_time + 30 * 24 * 60 * 60 * 1000 + 1;
+            clock::set_for_testing(&mut clock, current_time);
+            listing.release_tranche_at(&tide, &mut capital_vault, i, &clock, ts::ctx(&mut scenario));
+            i = i + 1;
+        };
+        
+        assert!(capital_vault.all_released());
+        
+        clock::destroy_for_testing(clock);
+        ts::return_shared(tide);
+        ts::return_shared(listing);
+        ts::return_shared(capital_vault);
+    };
+    
+    // Complete the listing
+    ts::next_tx(&mut scenario, ADMIN);
+    {
+        let mut listing = ts::take_shared<Listing>(&scenario);
+        let council_cap = ts::take_from_sender<CouncilCap>(&scenario);
+        let capital_vault = ts::take_shared<CapitalVault>(&scenario);
+        let reward_vault = ts::take_shared<RewardVault>(&scenario);
+        
+        listing.complete(&council_cap, &capital_vault, &reward_vault, ts::ctx(&mut scenario));
+        
+        assert!(listing.state() == constants::state_completed!());
+        assert!(listing.is_completed());
+        
+        ts::return_shared(listing);
+        ts::return_shared(capital_vault);
+        ts::return_shared(reward_vault);
+        transfer::public_transfer(council_cap, ADMIN);
+    };
+    
+    ts::end(scenario);
+}
+
+#[test]
+#[expected_failure(abort_code = 11, location = tide_core::listing)]  // errors::not_draft()
+fun test_cannot_activate_non_draft_listing() {
+    let mut scenario = ts::begin(ADMIN);
+    
+    // Setup and activate
+    setup_protocol(&mut scenario);
+    create_listing(&mut scenario);
+    activate_listing(&mut scenario);
+    
+    // Try to activate again - should fail
+    ts::next_tx(&mut scenario, ADMIN);
+    {
+        let mut listing = ts::take_shared<Listing>(&scenario);
+        let council_cap = ts::take_from_sender<CouncilCap>(&scenario);
+        let clock = clock::create_for_testing(ts::ctx(&mut scenario));
+        
+        // Already active, should fail
+        listing.activate(&council_cap, &clock, ts::ctx(&mut scenario));
+        
+        clock::destroy_for_testing(clock);
+        ts::return_shared(listing);
+        transfer::public_transfer(council_cap, ADMIN);
+    };
+    
+    ts::end(scenario);
+}
+
+#[test]
+#[expected_failure(abort_code = 0, location = tide_core::listing)]  // errors::not_active()
+fun test_cannot_finalize_draft_listing() {
+    let mut scenario = ts::begin(ADMIN);
+    
+    // Setup but don't activate
+    setup_protocol(&mut scenario);
+    create_listing(&mut scenario);
+    
+    // Try to finalize from Draft - should fail
+    ts::next_tx(&mut scenario, ADMIN);
+    {
+        let mut listing = ts::take_shared<Listing>(&scenario);
+        let council_cap = ts::take_from_sender<CouncilCap>(&scenario);
+        let mut capital_vault = ts::take_shared<CapitalVault>(&scenario);
+        let clock = clock::create_for_testing(ts::ctx(&mut scenario));
+        
+        listing.finalize(&council_cap, &mut capital_vault, &clock, ts::ctx(&mut scenario));
+        
+        clock::destroy_for_testing(clock);
+        ts::return_shared(listing);
+        ts::return_shared(capital_vault);
+        transfer::public_transfer(council_cap, ADMIN);
+    };
+    
+    ts::end(scenario);
+}
+
+// === Admin Cap Rotation ===
+
+#[test]
+fun test_admin_cap_rotation() {
+    let mut scenario = ts::begin(ADMIN);
+    
+    setup_protocol(&mut scenario);
+    
+    let new_admin: address = @0xAD2;
+    
+    // Rotate admin cap
+    ts::next_tx(&mut scenario, ADMIN);
+    {
+        let admin_cap = ts::take_from_sender<AdminCap>(&scenario);
+        
+        tide::transfer_admin_cap(admin_cap, new_admin, ts::ctx(&mut scenario));
+    };
+    
+    // Verify new admin has the cap
+    ts::next_tx(&mut scenario, new_admin);
+    {
+        let admin_cap = ts::take_from_sender<AdminCap>(&scenario);
+        // New admin can use the cap
+        transfer::public_transfer(admin_cap, new_admin);
+    };
+    
+    // Verify old admin no longer has cap
+    ts::next_tx(&mut scenario, ADMIN);
+    {
+        assert!(!ts::has_most_recent_for_sender<AdminCap>(&scenario));
+    };
+    
+    ts::end(scenario);
+}
+
+// === Council Cap Rotation ===
+
+#[test]
+fun test_council_cap_rotation() {
+    let mut scenario = ts::begin(ADMIN);
+    
+    setup_protocol(&mut scenario);
+    
+    let new_council: address = @0xC2;
+    
+    // Rotate council cap
+    ts::next_tx(&mut scenario, ADMIN);
+    {
+        let council_cap = ts::take_from_sender<CouncilCap>(&scenario);
+        
+        council::transfer_cap(council_cap, new_council, ts::ctx(&mut scenario));
+    };
+    
+    // Verify new council has the cap
+    ts::next_tx(&mut scenario, new_council);
+    {
+        let council_cap = ts::take_from_sender<CouncilCap>(&scenario);
+        // New council can use the cap
+        transfer::public_transfer(council_cap, new_council);
+    };
+    
+    // Verify old admin no longer has council cap
+    ts::next_tx(&mut scenario, ADMIN);
+    {
+        assert!(!ts::has_most_recent_for_sender<CouncilCap>(&scenario));
+    };
+    
+    ts::end(scenario);
+}
+
+// === Tranche Release Tests ===
+
+#[test]
+#[expected_failure(abort_code = 1, location = tide_core::listing)]  // errors::paused()
+fun test_tranche_release_blocked_when_paused() {
+    let mut scenario = ts::begin(ADMIN);
+    
+    setup_protocol(&mut scenario);
+    create_listing(&mut scenario);
+    activate_listing(&mut scenario);
+    backer_deposit(&mut scenario, BACKER1, 10_000_000_000);
+    
+    // Finalize
+    ts::next_tx(&mut scenario, ADMIN);
+    {
+        let mut listing = ts::take_shared<Listing>(&scenario);
+        let council_cap = ts::take_from_sender<CouncilCap>(&scenario);
+        let mut capital_vault = ts::take_shared<CapitalVault>(&scenario);
+        let clock = clock::create_for_testing(ts::ctx(&mut scenario));
+        
+        listing.finalize(&council_cap, &mut capital_vault, &clock, ts::ctx(&mut scenario));
+        
+        clock::destroy_for_testing(clock);
+        ts::return_shared(listing);
+        ts::return_shared(capital_vault);
+        transfer::public_transfer(council_cap, ADMIN);
+    };
+    
+    // Collect raise fee
+    ts::next_tx(&mut scenario, ISSUER);
+    {
+        let listing = ts::take_shared<Listing>(&scenario);
+        let tide = ts::take_shared<Tide>(&scenario);
+        let mut capital_vault = ts::take_shared<CapitalVault>(&scenario);
+        
+        listing.collect_raise_fee(&tide, &mut capital_vault, ts::ctx(&mut scenario));
+        
+        ts::return_shared(tide);
+        ts::return_shared(listing);
+        ts::return_shared(capital_vault);
+    };
+    
+    // Pause the listing
+    ts::next_tx(&mut scenario, ADMIN);
+    {
+        let mut listing = ts::take_shared<Listing>(&scenario);
+        let council_cap = ts::take_from_sender<CouncilCap>(&scenario);
+        
+        listing.pause(&council_cap);
+        
+        ts::return_shared(listing);
+        transfer::public_transfer(council_cap, ADMIN);
+    };
+    
+    // Try to release tranche while paused - should fail
+    ts::next_tx(&mut scenario, ISSUER);
+    {
+        let listing = ts::take_shared<Listing>(&scenario);
+        let tide = ts::take_shared<Tide>(&scenario);
+        let mut capital_vault = ts::take_shared<CapitalVault>(&scenario);
+        let clock = clock::create_for_testing(ts::ctx(&mut scenario));
+        
+        listing.release_tranche_at(&tide, &mut capital_vault, 0, &clock, ts::ctx(&mut scenario));
+        
+        clock::destroy_for_testing(clock);
+        ts::return_shared(tide);
+        ts::return_shared(listing);
+        ts::return_shared(capital_vault);
+    };
+    
+    ts::end(scenario);
+}
+
+#[test]
+fun test_validator_update() {
+    let mut scenario = ts::begin(ADMIN);
+    
+    // Setup and activate
+    setup_protocol(&mut scenario);
+    create_listing(&mut scenario);
+    activate_listing(&mut scenario);
+    
+    // Verify original validator
+    ts::next_tx(&mut scenario, ADMIN);
+    {
+        let staking = ts::take_shared<staking_adapter::StakingAdapter>(&scenario);
+        assert!(staking.validator() == VALIDATOR);
+        ts::return_shared(staking);
+    };
+    
+    // Council updates validator
+    let new_validator: address = @0xA2;
+    ts::next_tx(&mut scenario, ADMIN);
+    {
+        let listing = ts::take_shared<Listing>(&scenario);
+        let tide = ts::take_shared<Tide>(&scenario);
+        let council_cap = ts::take_from_sender<CouncilCap>(&scenario);
+        let mut staking = ts::take_shared<staking_adapter::StakingAdapter>(&scenario);
+        
+        listing.set_staking_validator(&tide, &council_cap, &mut staking, new_validator);
+        assert!(staking.validator() == new_validator);
+        
+        ts::return_shared(listing);
+        ts::return_shared(tide);
+        ts::return_shared(staking);
+        transfer::public_transfer(council_cap, ADMIN);
+    };
+    
+    ts::end(scenario);
+}

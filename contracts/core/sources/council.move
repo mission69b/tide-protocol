@@ -44,6 +44,14 @@ public struct CouncilCapTransferred has copy, drop {
     to: address,
 }
 
+/// Emitted when council config is updated.
+public struct CouncilConfigUpdated has copy, drop {
+    old_threshold: u64,
+    new_threshold: u64,
+    old_members: u64,
+    new_members: u64,
+}
+
 // === Init ===
 
 fun init(_otw: COUNCIL, ctx: &mut TxContext) {
@@ -78,6 +86,34 @@ public fun transfer_cap(
         to,
     });
     transfer::public_transfer(cap, to);
+}
+
+/// Update council configuration (threshold and members).
+/// Requires CouncilCap. Used to reflect changes in the multisig setup.
+/// 
+/// Note: This is for documentation/transparency only. Actual multisig
+/// enforcement happens at the wallet/multisig level.
+public fun update_config(
+    config: &mut CouncilConfig,
+    _cap: &CouncilCap,
+    new_threshold: u64,
+    new_members: u64,
+) {
+    assert!(new_threshold > 0, 0); // Threshold must be positive
+    assert!(new_members >= new_threshold, 1); // Members must be >= threshold
+    
+    let old_threshold = config.threshold;
+    let old_members = config.members;
+    
+    config.threshold = new_threshold;
+    config.members = new_members;
+    
+    sui::event::emit(CouncilConfigUpdated {
+        old_threshold,
+        new_threshold,
+        old_members,
+        new_members,
+    });
 }
 
 // === View Functions ===
@@ -154,4 +190,52 @@ fun test_council_config_values() {
     assert!(config.config_version() == 1);
     
     destroy_config_for_testing(config);
+}
+
+#[test]
+fun test_update_council_config() {
+    let mut ctx = tx_context::dummy();
+    let mut config = new_config_for_testing(&mut ctx);
+    let cap = new_cap_for_testing(&mut ctx);
+    
+    // Initial values
+    assert!(config.threshold() == 2);
+    assert!(config.members() == 3);
+    
+    // Update to 3-of-5
+    update_config(&mut config, &cap, 3, 5);
+    
+    assert!(config.threshold() == 3);
+    assert!(config.members() == 5);
+    
+    destroy_config_for_testing(config);
+    destroy_cap_for_testing(cap);
+}
+
+#[test]
+#[expected_failure]
+fun test_update_council_config_invalid_threshold() {
+    let mut ctx = tx_context::dummy();
+    let mut config = new_config_for_testing(&mut ctx);
+    let cap = new_cap_for_testing(&mut ctx);
+    
+    // Threshold can't be 0
+    update_config(&mut config, &cap, 0, 3);
+    
+    destroy_config_for_testing(config);
+    destroy_cap_for_testing(cap);
+}
+
+#[test]
+#[expected_failure]
+fun test_update_council_config_threshold_exceeds_members() {
+    let mut ctx = tx_context::dummy();
+    let mut config = new_config_for_testing(&mut ctx);
+    let cap = new_cap_for_testing(&mut ctx);
+    
+    // Threshold can't exceed members
+    update_config(&mut config, &cap, 5, 3);
+    
+    destroy_config_for_testing(config);
+    destroy_cap_for_testing(cap);
 }

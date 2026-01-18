@@ -447,3 +447,26 @@ public fun emit_treasury_payment(
 ) {
     emit(TreasuryPayment { listing_id, payment_type, amount, treasury });
 }
+
+// === Staking Configuration Events ===
+
+/// Emitted when staking is enabled or disabled for a listing.
+public struct StakingEnabledChanged has copy, drop {
+    listing_id: ID,
+    enabled: bool,
+}
+
+public fun emit_staking_enabled_changed(listing_id: ID, enabled: bool) {
+    emit(StakingEnabledChanged { listing_id, enabled });
+}
+
+/// Emitted when the validator address is updated for a listing.
+public struct ValidatorUpdated has copy, drop {
+    listing_id: ID,
+    old_validator: address,
+    new_validator: address,
+}
+
+public fun emit_validator_updated(listing_id: ID, old_validator: address, new_validator: address) {
+    emit(ValidatorUpdated { listing_id, old_validator, new_validator });
+}
