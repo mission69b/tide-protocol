@@ -161,11 +161,16 @@ Represents a backer's full economic position.
 **Core requirements (v1):**
 
 - Owned object (transferable NFT)
-- Stores **economic state only**:
+- Stores **economic state**:
   - `listing_id` — reference to parent listing
   - `shares` — normalized contribution shares (immutable, non-zero)
   - `claim_index` — reward claim cursor (index snapshot)
-  - Optional non-economic metadata (e.g., `created_epoch`)
+- Stores **provenance metadata** (non-economic, immutable after mint):
+  - `pass_number` — sequential backer number (e.g., "Backer #42")
+  - `original_backer` — address of initial depositor (preserved on transfer)
+  - `created_epoch` — Sui epoch when minted
+- Stores **activity metadata** (updated on claim):
+  - `total_claimed` — lifetime rewards claimed through this pass
 
 **Normative rules:**
 
@@ -183,6 +188,12 @@ Represents a backer's full economic position.
 - Display configuration MUST remain non-economic
 
 **Invariant:** `SupporterPass` contains no logic or data that can affect economics beyond share-based reward entitlement.
+
+**Secondary market benefits:**
+
+- `pass_number` provides collectibility ("I was an early backer!")
+- `original_backer` provides provenance (preserved even after transfer)
+- `total_claimed` shows earning history (dynamic, living NFT)
 
 **Important:** This object is **not** an account abstraction and MUST remain minimal and auditable.
 

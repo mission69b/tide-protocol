@@ -1,12 +1,11 @@
 [package]
 name = "faith_router"
 edition = "2024"
-version = "1.1.0"
-# Update this after publishing
-published-at = "0x0"
+version = "1.0.0"
+published-at = "0x57ee3d515a05f269a63256f0f5c09ff306ecef1a06c8c6d6299135770eebfda8"
 
 [dependencies]
-# tide_core inherits its address from its own Move.toml (v4 testnet)
+# tide_core inherits its address from its own Move.toml
 tide_core = { local = "../../core" }
 
 [addresses]

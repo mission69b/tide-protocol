@@ -1598,3 +1598,469 @@ fun test_treasury_vault_withdraw_all() {
     
     ts::end(scenario);
 }
+
+// =============================================================================
+// SupporterPass Enhanced Fields Tests (pass_number, original_backer, total_claimed)
+// =============================================================================
+
+#[test]
+fun test_supporter_pass_sequential_numbers() {
+    let mut scenario = ts::begin(ADMIN);
+    
+    setup_protocol(&mut scenario);
+    create_listing(&mut scenario);
+    activate_listing(&mut scenario);
+    
+    // First deposit - should get pass #1
+    ts::next_tx(&mut scenario, BACKER1);
+    {
+        let mut listing = ts::take_shared<Listing>(&scenario);
+        let tide = ts::take_shared<Tide>(&scenario);
+        let mut capital_vault = ts::take_shared<CapitalVault>(&scenario);
+        let mut reward_vault = ts::take_shared<RewardVault>(&scenario);
+        let clock = clock::create_for_testing(ts::ctx(&mut scenario));
+        
+        let coin = coin::mint_for_testing<SUI>(5_000_000_000, ts::ctx(&mut scenario));
+        let pass = listing.deposit(&tide, &mut capital_vault, &mut reward_vault, coin, &clock, ts::ctx(&mut scenario));
+        
+        // First backer should have pass_number = 1
+        assert!(pass.pass_number() == 1);
+        assert!(pass.original_backer() == BACKER1);
+        assert!(pass.total_claimed() == 0);
+        
+        transfer::public_transfer(pass, BACKER1);
+        clock::destroy_for_testing(clock);
+        ts::return_shared(listing);
+        ts::return_shared(tide);
+        ts::return_shared(capital_vault);
+        ts::return_shared(reward_vault);
+    };
+    
+    // Second deposit - should get pass #2
+    ts::next_tx(&mut scenario, BACKER2);
+    {
+        let mut listing = ts::take_shared<Listing>(&scenario);
+        let tide = ts::take_shared<Tide>(&scenario);
+        let mut capital_vault = ts::take_shared<CapitalVault>(&scenario);
+        let mut reward_vault = ts::take_shared<RewardVault>(&scenario);
+        let clock = clock::create_for_testing(ts::ctx(&mut scenario));
+        
+        let coin = coin::mint_for_testing<SUI>(10_000_000_000, ts::ctx(&mut scenario));
+        let pass = listing.deposit(&tide, &mut capital_vault, &mut reward_vault, coin, &clock, ts::ctx(&mut scenario));
+        
+        // Second backer should have pass_number = 2
+        assert!(pass.pass_number() == 2);
+        assert!(pass.original_backer() == BACKER2);
+        assert!(pass.total_claimed() == 0);
+        
+        transfer::public_transfer(pass, BACKER2);
+        clock::destroy_for_testing(clock);
+        ts::return_shared(listing);
+        ts::return_shared(tide);
+        ts::return_shared(capital_vault);
+        ts::return_shared(reward_vault);
+    };
+    
+    ts::end(scenario);
+}
+
+#[test]
+fun test_supporter_pass_total_claimed_tracking() {
+    let mut scenario = ts::begin(ADMIN);
+    
+    setup_protocol(&mut scenario);
+    create_listing(&mut scenario);
+    activate_listing(&mut scenario);
+    
+    // Deposit
+    ts::next_tx(&mut scenario, BACKER1);
+    {
+        let mut listing = ts::take_shared<Listing>(&scenario);
+        let tide = ts::take_shared<Tide>(&scenario);
+        let mut capital_vault = ts::take_shared<CapitalVault>(&scenario);
+        let mut reward_vault = ts::take_shared<RewardVault>(&scenario);
+        let clock = clock::create_for_testing(ts::ctx(&mut scenario));
+        
+        let coin = coin::mint_for_testing<SUI>(10_000_000_000, ts::ctx(&mut scenario));
+        let pass = listing.deposit(&tide, &mut capital_vault, &mut reward_vault, coin, &clock, ts::ctx(&mut scenario));
+        
+        transfer::public_transfer(pass, BACKER1);
+        clock::destroy_for_testing(clock);
+        ts::return_shared(listing);
+        ts::return_shared(tide);
+        ts::return_shared(capital_vault);
+        ts::return_shared(reward_vault);
+    };
+    
+    // Route rewards
+    ts::next_tx(&mut scenario, ISSUER);
+    {
+        let mut reward_vault = ts::take_shared<RewardVault>(&scenario);
+        let route_cap = ts::take_from_sender<RouteCapability>(&scenario);
+        
+        let revenue = coin::mint_for_testing<SUI>(100_000_000_000, ts::ctx(&mut scenario));
+        reward_vault.deposit_rewards(&route_cap, revenue, ts::ctx(&mut scenario));
+        
+        ts::return_shared(reward_vault);
+        transfer::public_transfer(route_cap, ISSUER);
+    };
+    
+    // First claim
+    ts::next_tx(&mut scenario, BACKER1);
+    {
+        let listing = ts::take_shared<Listing>(&scenario);
+        let tide = ts::take_shared<Tide>(&scenario);
+        let mut reward_vault = ts::take_shared<RewardVault>(&scenario);
+        let mut pass = ts::take_from_sender<SupporterPass>(&scenario);
+        
+        // Before claim: total_claimed should be 0
+        assert!(pass.total_claimed() == 0);
+        
+        let reward = listing.claim(&tide, &mut reward_vault, &mut pass, ts::ctx(&mut scenario));
+        let reward_amount = reward.value();
+        
+        // After claim: total_claimed should match reward
+        assert!(pass.total_claimed() == reward_amount);
+        assert!(reward_amount > 0);
+        
+        coin::burn_for_testing(reward);
+        ts::return_to_sender(&scenario, pass);
+        ts::return_shared(listing);
+        ts::return_shared(tide);
+        ts::return_shared(reward_vault);
+    };
+    
+    // Route more rewards
+    ts::next_tx(&mut scenario, ISSUER);
+    {
+        let mut reward_vault = ts::take_shared<RewardVault>(&scenario);
+        let route_cap = ts::take_from_sender<RouteCapability>(&scenario);
+        
+        let revenue = coin::mint_for_testing<SUI>(50_000_000_000, ts::ctx(&mut scenario));
+        reward_vault.deposit_rewards(&route_cap, revenue, ts::ctx(&mut scenario));
+        
+        ts::return_shared(reward_vault);
+        transfer::public_transfer(route_cap, ISSUER);
+    };
+    
+    // Second claim - total_claimed should be cumulative
+    ts::next_tx(&mut scenario, BACKER1);
+    {
+        let listing = ts::take_shared<Listing>(&scenario);
+        let tide = ts::take_shared<Tide>(&scenario);
+        let mut reward_vault = ts::take_shared<RewardVault>(&scenario);
+        let mut pass = ts::take_from_sender<SupporterPass>(&scenario);
+        
+        let first_claim_total = pass.total_claimed();
+        
+        let reward = listing.claim(&tide, &mut reward_vault, &mut pass, ts::ctx(&mut scenario));
+        let second_reward_amount = reward.value();
+        
+        // total_claimed should now be sum of both claims
+        assert!(pass.total_claimed() == first_claim_total + second_reward_amount);
+        
+        coin::burn_for_testing(reward);
+        ts::return_to_sender(&scenario, pass);
+        ts::return_shared(listing);
+        ts::return_shared(tide);
+        ts::return_shared(reward_vault);
+    };
+    
+    ts::end(scenario);
+}
+
+#[test]
+fun test_supporter_pass_provenance_preserved_after_transfer() {
+    let mut scenario = ts::begin(ADMIN);
+    
+    setup_protocol(&mut scenario);
+    create_listing(&mut scenario);
+    activate_listing(&mut scenario);
+    
+    // Backer 1 deposits
+    ts::next_tx(&mut scenario, BACKER1);
+    {
+        let mut listing = ts::take_shared<Listing>(&scenario);
+        let tide = ts::take_shared<Tide>(&scenario);
+        let mut capital_vault = ts::take_shared<CapitalVault>(&scenario);
+        let mut reward_vault = ts::take_shared<RewardVault>(&scenario);
+        let clock = clock::create_for_testing(ts::ctx(&mut scenario));
+        
+        let coin = coin::mint_for_testing<SUI>(10_000_000_000, ts::ctx(&mut scenario));
+        let pass = listing.deposit(&tide, &mut capital_vault, &mut reward_vault, coin, &clock, ts::ctx(&mut scenario));
+        
+        // Original backer is BACKER1
+        assert!(pass.original_backer() == BACKER1);
+        assert!(pass.pass_number() == 1);
+        
+        transfer::public_transfer(pass, BACKER1);
+        clock::destroy_for_testing(clock);
+        ts::return_shared(listing);
+        ts::return_shared(tide);
+        ts::return_shared(capital_vault);
+        ts::return_shared(reward_vault);
+    };
+    
+    // Transfer to Backer 2
+    ts::next_tx(&mut scenario, BACKER1);
+    {
+        let pass = ts::take_from_sender<SupporterPass>(&scenario);
+        transfer::public_transfer(pass, BACKER2);
+    };
+    
+    // Verify provenance is preserved after transfer
+    ts::next_tx(&mut scenario, BACKER2);
+    {
+        let pass = ts::take_from_sender<SupporterPass>(&scenario);
+        
+        // Even after transfer, original_backer should still be BACKER1
+        assert!(pass.original_backer() == BACKER1);
+        assert!(pass.pass_number() == 1);
+        
+        ts::return_to_sender(&scenario, pass);
+    };
+    
+    ts::end(scenario);
+}
+
+// =============================================================================
+// Batch Claim Tests (claim_many)
+// =============================================================================
+
+#[test]
+fun test_claim_many_multiple_passes() {
+    let mut scenario = ts::begin(ADMIN);
+    
+    setup_protocol(&mut scenario);
+    create_listing(&mut scenario);
+    activate_listing(&mut scenario);
+    
+    // Same backer makes 3 deposits to get 3 passes
+    ts::next_tx(&mut scenario, BACKER1);
+    {
+        let mut listing = ts::take_shared<Listing>(&scenario);
+        let tide = ts::take_shared<Tide>(&scenario);
+        let mut capital_vault = ts::take_shared<CapitalVault>(&scenario);
+        let mut reward_vault = ts::take_shared<RewardVault>(&scenario);
+        let clock = clock::create_for_testing(ts::ctx(&mut scenario));
+        
+        // Deposit 1
+        let coin1 = coin::mint_for_testing<SUI>(10_000_000_000, ts::ctx(&mut scenario));
+        let pass1 = listing.deposit(&tide, &mut capital_vault, &mut reward_vault, coin1, &clock, ts::ctx(&mut scenario));
+        
+        // Deposit 2
+        let coin2 = coin::mint_for_testing<SUI>(20_000_000_000, ts::ctx(&mut scenario));
+        let pass2 = listing.deposit(&tide, &mut capital_vault, &mut reward_vault, coin2, &clock, ts::ctx(&mut scenario));
+        
+        // Deposit 3
+        let coin3 = coin::mint_for_testing<SUI>(30_000_000_000, ts::ctx(&mut scenario));
+        let pass3 = listing.deposit(&tide, &mut capital_vault, &mut reward_vault, coin3, &clock, ts::ctx(&mut scenario));
+        
+        transfer::public_transfer(pass1, BACKER1);
+        transfer::public_transfer(pass2, BACKER1);
+        transfer::public_transfer(pass3, BACKER1);
+        clock::destroy_for_testing(clock);
+        ts::return_shared(listing);
+        ts::return_shared(tide);
+        ts::return_shared(capital_vault);
+        ts::return_shared(reward_vault);
+    };
+    
+    // Route 60 SUI in revenue (matches total deposit for easy math)
+    ts::next_tx(&mut scenario, ISSUER);
+    {
+        let mut reward_vault = ts::take_shared<RewardVault>(&scenario);
+        let route_cap = ts::take_from_sender<RouteCapability>(&scenario);
+        
+        let revenue = coin::mint_for_testing<SUI>(60_000_000_000, ts::ctx(&mut scenario));
+        reward_vault.deposit_rewards(&route_cap, revenue, ts::ctx(&mut scenario));
+        
+        ts::return_shared(reward_vault);
+        transfer::public_transfer(route_cap, ISSUER);
+    };
+    
+    // Batch claim all 3 passes
+    ts::next_tx(&mut scenario, BACKER1);
+    {
+        let listing = ts::take_shared<Listing>(&scenario);
+        let tide = ts::take_shared<Tide>(&scenario);
+        let mut reward_vault = ts::take_shared<RewardVault>(&scenario);
+        
+        // Collect all 3 passes into a vector
+        let mut pass1 = ts::take_from_sender<SupporterPass>(&scenario);
+        let mut pass2 = ts::take_from_sender<SupporterPass>(&scenario);
+        let mut pass3 = ts::take_from_sender<SupporterPass>(&scenario);
+        
+        let mut passes = vector::empty<SupporterPass>();
+        passes.push_back(pass1);
+        passes.push_back(pass2);
+        passes.push_back(pass3);
+        
+        // Claim all at once
+        let total_reward = listing.claim_many(&tide, &mut reward_vault, &mut passes, ts::ctx(&mut scenario));
+        
+        // Should get approximately 60 SUI total (100% of rewards)
+        assert!(total_reward.value() >= 59_000_000_000);
+        
+        coin::burn_for_testing(total_reward);
+        
+        // Return passes
+        pass1 = passes.pop_back();
+        pass2 = passes.pop_back();
+        pass3 = passes.pop_back();
+        passes.destroy_empty();
+        
+        // All passes should have updated total_claimed
+        assert!(pass1.total_claimed() > 0);
+        assert!(pass2.total_claimed() > 0);
+        assert!(pass3.total_claimed() > 0);
+        
+        ts::return_to_sender(&scenario, pass1);
+        ts::return_to_sender(&scenario, pass2);
+        ts::return_to_sender(&scenario, pass3);
+        ts::return_shared(listing);
+        ts::return_shared(tide);
+        ts::return_shared(reward_vault);
+    };
+    
+    ts::end(scenario);
+}
+
+#[test]
+fun test_claim_many_skips_empty_claims() {
+    let mut scenario = ts::begin(ADMIN);
+    
+    setup_protocol(&mut scenario);
+    create_listing(&mut scenario);
+    activate_listing(&mut scenario);
+    
+    // Backer makes 2 deposits
+    ts::next_tx(&mut scenario, BACKER1);
+    {
+        let mut listing = ts::take_shared<Listing>(&scenario);
+        let tide = ts::take_shared<Tide>(&scenario);
+        let mut capital_vault = ts::take_shared<CapitalVault>(&scenario);
+        let mut reward_vault = ts::take_shared<RewardVault>(&scenario);
+        let clock = clock::create_for_testing(ts::ctx(&mut scenario));
+        
+        let coin1 = coin::mint_for_testing<SUI>(10_000_000_000, ts::ctx(&mut scenario));
+        let pass1 = listing.deposit(&tide, &mut capital_vault, &mut reward_vault, coin1, &clock, ts::ctx(&mut scenario));
+        
+        let coin2 = coin::mint_for_testing<SUI>(10_000_000_000, ts::ctx(&mut scenario));
+        let pass2 = listing.deposit(&tide, &mut capital_vault, &mut reward_vault, coin2, &clock, ts::ctx(&mut scenario));
+        
+        transfer::public_transfer(pass1, BACKER1);
+        transfer::public_transfer(pass2, BACKER1);
+        clock::destroy_for_testing(clock);
+        ts::return_shared(listing);
+        ts::return_shared(tide);
+        ts::return_shared(capital_vault);
+        ts::return_shared(reward_vault);
+    };
+    
+    // Route some revenue
+    ts::next_tx(&mut scenario, ISSUER);
+    {
+        let mut reward_vault = ts::take_shared<RewardVault>(&scenario);
+        let route_cap = ts::take_from_sender<RouteCapability>(&scenario);
+        
+        let revenue = coin::mint_for_testing<SUI>(20_000_000_000, ts::ctx(&mut scenario));
+        reward_vault.deposit_rewards(&route_cap, revenue, ts::ctx(&mut scenario));
+        
+        ts::return_shared(reward_vault);
+        transfer::public_transfer(route_cap, ISSUER);
+    };
+    
+    // Claim only pass1 individually first
+    ts::next_tx(&mut scenario, BACKER1);
+    {
+        let listing = ts::take_shared<Listing>(&scenario);
+        let tide = ts::take_shared<Tide>(&scenario);
+        let mut reward_vault = ts::take_shared<RewardVault>(&scenario);
+        let mut pass1 = ts::take_from_sender<SupporterPass>(&scenario);
+        
+        let reward = listing.claim(&tide, &mut reward_vault, &mut pass1, ts::ctx(&mut scenario));
+        coin::burn_for_testing(reward);
+        
+        ts::return_to_sender(&scenario, pass1);
+        ts::return_shared(listing);
+        ts::return_shared(tide);
+        ts::return_shared(reward_vault);
+    };
+    
+    // Now batch claim both - pass1 should be skipped (already claimed), pass2 should succeed
+    ts::next_tx(&mut scenario, BACKER1);
+    {
+        let listing = ts::take_shared<Listing>(&scenario);
+        let tide = ts::take_shared<Tide>(&scenario);
+        let mut reward_vault = ts::take_shared<RewardVault>(&scenario);
+        
+        let mut pass1 = ts::take_from_sender<SupporterPass>(&scenario);
+        let mut pass2 = ts::take_from_sender<SupporterPass>(&scenario);
+        
+        let pass1_claimed_before = pass1.total_claimed();
+        let pass2_claimed_before = pass2.total_claimed();
+        
+        let mut passes = vector::empty<SupporterPass>();
+        passes.push_back(pass1);
+        passes.push_back(pass2);
+        
+        // Should succeed without error even though pass1 has nothing
+        let total_reward = listing.claim_many(&tide, &mut reward_vault, &mut passes, ts::ctx(&mut scenario));
+        
+        // Should only get pass2's share (~10 SUI)
+        assert!(total_reward.value() >= 9_000_000_000 && total_reward.value() <= 11_000_000_000);
+        
+        coin::burn_for_testing(total_reward);
+        
+        pass1 = passes.pop_back();
+        pass2 = passes.pop_back();
+        passes.destroy_empty();
+        
+        // pass1 should have same total_claimed (skipped)
+        assert!(pass1.total_claimed() == pass1_claimed_before);
+        // pass2 should have increased total_claimed
+        assert!(pass2.total_claimed() > pass2_claimed_before);
+        
+        ts::return_to_sender(&scenario, pass1);
+        ts::return_to_sender(&scenario, pass2);
+        ts::return_shared(listing);
+        ts::return_shared(tide);
+        ts::return_shared(reward_vault);
+    };
+    
+    ts::end(scenario);
+}
+
+#[test]
+fun test_claim_many_empty_vector() {
+    let mut scenario = ts::begin(ADMIN);
+    
+    setup_protocol(&mut scenario);
+    create_listing(&mut scenario);
+    activate_listing(&mut scenario);
+    
+    // Call claim_many with empty vector - should return zero coin
+    ts::next_tx(&mut scenario, BACKER1);
+    {
+        let listing = ts::take_shared<Listing>(&scenario);
+        let tide = ts::take_shared<Tide>(&scenario);
+        let mut reward_vault = ts::take_shared<RewardVault>(&scenario);
+        
+        let mut passes = vector::empty<SupporterPass>();
+        
+        let total_reward = listing.claim_many(&tide, &mut reward_vault, &mut passes, ts::ctx(&mut scenario));
+        
+        // Should return zero coin
+        assert!(total_reward.value() == 0);
+        
+        coin::burn_for_testing(total_reward);
+        passes.destroy_empty();
+        
+        ts::return_shared(listing);
+        ts::return_shared(tide);
+        ts::return_shared(reward_vault);
+    };
+    
+    ts::end(scenario);
+}

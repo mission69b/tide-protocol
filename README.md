@@ -35,7 +35,7 @@ Tide enables projects to raise capital **after product-market fit** without sell
 | `CapitalVault` | Shared | Holds contributed SUI, manages tranche releases |
 | `RewardVault` | Shared | Holds rewards, maintains cumulative index for fair distribution |
 | `StakingAdapter` | Shared | Manages native Sui staking for locked capital |
-| `SupporterPass` | Owned (NFT) | Backer's transferable position with fixed shares and claim cursor |
+| `SupporterPass` | Owned (NFT) | Backer's transferable NFT with shares, claim cursor, pass number, original backer, and lifetime earnings |
 
 ## How It Works
 
@@ -98,7 +98,12 @@ sequenceDiagram
 2. **Listing validates state** — Must be `Active`, not paused
 3. **CapitalVault accepts deposit** — Validates minimum, adds to total principal
 4. **Shares calculated** — `shares = deposit_amount * PRECISION / total_principal_at_deposit`
-5. **SupporterPass minted** — NFT with fixed shares and claim cursor at current index
+5. **SupporterPass minted** — NFT with:
+   - Fixed shares (proportional claim on rewards)
+   - Claim cursor at current index
+   - Sequential pass number (e.g., "Backer #42")
+   - Original backer address (provenance)
+   - Lifetime claimed tracker (starts at 0)
 6. **Pass transferred to backer** — Fully owned, transferable
 
 ## Withdrawal Flow (Reward Claims)
@@ -133,6 +138,28 @@ sequenceDiagram
 5. **Transfer SUI to backer** — Direct transfer
 6. **Update pass cursor** — Set `pass_index = global_index` to prevent double-claim
 
+### Batch Claiming (Multiple Passes)
+
+Backers with multiple SupporterPasses can claim all rewards in a single transaction using `claim_many()`:
+
+```move
+/// Claim rewards from multiple passes at once
+public fun claim_many(
+    listing: &Listing,
+    tide: &Tide,
+    reward_vault: &mut RewardVault,
+    passes: &mut vector<SupporterPass>,
+    ctx: &mut TxContext,
+): Coin<SUI>
+```
+
+**Benefits:**
+- Single transaction for all passes = lower gas
+- Automatically skips passes with nothing to claim (no errors)
+- Returns merged coin with total claimed amount
+- Individual `Claimed` events still emitted for each pass (for indexing)
+- Summary `BatchClaimed` event emitted with totals
+
 ### Why This is Transfer-Safe
 
 When a SupporterPass is transferred:
@@ -140,6 +167,24 @@ When a SupporterPass is transferred:
 - They can only claim rewards accrued **after** the last claim
 - Previous owner cannot claim again (no longer owns the pass)
 - No coordination or approval needed
+
+### SupporterPass NFT Fields
+
+The SupporterPass is a dynamic NFT with economic and provenance data:
+
+| Field | Type | Purpose | Mutable |
+|-------|------|---------|---------|
+| `pass_number` | u64 | Sequential backer number ("Backer #42") | ❌ |
+| `original_backer` | address | Who first minted (provenance for resale) | ❌ |
+| `shares` | u128 | Proportional claim on rewards | ❌ |
+| `claim_index` | u128 | Last claimed reward index | ✅ (on claim) |
+| `total_claimed` | u64 | Lifetime rewards claimed through this pass | ✅ (on claim) |
+| `created_epoch` | u64 | Sui epoch when minted | ❌ |
+
+**Secondary Market Benefits:**
+- `pass_number` provides collectibility ("I was an early backer!")
+- `original_backer` provides provenance (even after transfer)
+- `total_claimed` shows earning history (dynamic, living NFT)
 
 ## Deterministic Capital Release
 

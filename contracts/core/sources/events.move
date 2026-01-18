@@ -158,6 +158,31 @@ public fun emit_claimed(
     emit(Claimed { listing_id, pass_id, backer, amount, shares, old_claim_index, new_claim_index, epoch });
 }
 
+/// Emitted as a summary when multiple passes are claimed in one transaction.
+/// Individual Claimed events are still emitted for each pass.
+public struct BatchClaimed has copy, drop {
+    /// Listing the passes belong to
+    listing_id: ID,
+    /// Address that claimed (current owner)
+    backer: address,
+    /// Number of passes that had rewards claimed
+    passes_claimed: u64,
+    /// Total amount claimed across all passes
+    total_amount: u64,
+    /// Epoch when batch claim occurred
+    epoch: u64,
+}
+
+public fun emit_batch_claimed(
+    listing_id: ID,
+    backer: address,
+    passes_claimed: u64,
+    total_amount: u64,
+    epoch: u64,
+) {
+    emit(BatchClaimed { listing_id, backer, passes_claimed, total_amount, epoch });
+}
+
 // === Release Events ===
 
 /// Emitted when a tranche is released to the issuer.

@@ -1,9 +1,11 @@
 /// Transferable NFT representing a backer's economic position.
 /// 
-/// SupporterPass stores economics only:
+/// SupporterPass stores economics and provenance:
 /// - Fixed shares (immutable after mint)
 /// - Claim cursor (last claimed reward index)
-/// - Created epoch (non-economic, for reference only)
+/// - Pass number (sequential, for collectibility)
+/// - Original backer (provenance for secondary market)
+/// - Total claimed (lifetime earnings)
 /// 
 /// Ownership defines full reward entitlement - when transferred,
 /// claim rights move atomically with the NFT.
@@ -21,6 +23,11 @@ use tide_core::errors;
 /// Economic fields:
 /// - shares: determines reward entitlement (immutable)
 /// - claim_index: tracks last claimed position (mutable)
+/// - total_claimed: lifetime rewards claimed (mutable)
+/// 
+/// Provenance fields (for display/collectibility):
+/// - pass_number: sequential "Backer #N" number
+/// - original_backer: who first minted this pass
 /// 
 /// Non-economic fields (for display/reference only):
 /// - listing_id: parent listing reference
@@ -29,12 +36,21 @@ public struct SupporterPass has key, store {
     id: UID,
     /// ID of the listing this pass belongs to.
     listing_id: ID,
+    /// Sequential pass number (e.g., "Backer #42").
+    /// Assigned at mint time, immutable.
+    pass_number: u64,
+    /// Address that originally minted this pass.
+    /// Retained even after transfer (provenance).
+    original_backer: address,
     /// Fixed shares calculated at deposit time (immutable).
     /// Determines reward entitlement proportionally.
     shares: u128,
     /// Last claimed reward index (updated on claim).
     /// Used to calculate claimable rewards.
     claim_index: u128,
+    /// Lifetime rewards claimed through this pass.
+    /// Updated on each successful claim.
+    total_claimed: u64,
     /// Epoch when pass was created (non-economic, for display).
     created_epoch: u64,
 }
@@ -44,6 +60,8 @@ public struct SupporterPass has key, store {
 /// Mint a new SupporterPass. Only callable from listing module.
 public(package) fun mint(
     listing_id: ID,
+    pass_number: u64,
+    original_backer: address,
     shares: u128,
     current_index: u128,
     ctx: &mut TxContext,
@@ -51,8 +69,11 @@ public(package) fun mint(
     SupporterPass {
         id: object::new(ctx),
         listing_id,
+        pass_number,
+        original_backer,
         shares,
         claim_index: current_index,
+        total_claimed: 0,
         created_epoch: ctx.epoch(),
     }
 }
@@ -64,6 +85,14 @@ public(package) fun update_claim_index(
 ) {
     assert!(new_index >= self.claim_index, errors::invalid_state());
     self.claim_index = new_index;
+}
+
+/// Add to total claimed amount after a successful claim.
+public(package) fun add_claimed(
+    self: &mut SupporterPass,
+    amount: u64,
+) {
+    self.total_claimed = self.total_claimed + amount;
 }
 
 // === View Functions ===
@@ -78,6 +107,16 @@ public fun listing_id(self: &SupporterPass): ID {
     self.listing_id
 }
 
+/// Get the sequential pass number (e.g., "Backer #42").
+public fun pass_number(self: &SupporterPass): u64 {
+    self.pass_number
+}
+
+/// Get the original backer address (who first minted this pass).
+public fun original_backer(self: &SupporterPass): address {
+    self.original_backer
+}
+
 /// Get fixed share amount.
 public fun shares(self: &SupporterPass): u128 {
     self.shares
@@ -86,6 +125,11 @@ public fun shares(self: &SupporterPass): u128 {
 /// Get current claim index.
 public fun claim_index(self: &SupporterPass): u128 {
     self.claim_index
+}
+
+/// Get lifetime claimed amount.
+public fun total_claimed(self: &SupporterPass): u64 {
+    self.total_claimed
 }
 
 /// Get created epoch.
@@ -107,7 +151,19 @@ public fun mint_for_testing(
     current_index: u128,
     ctx: &mut TxContext,
 ): SupporterPass {
-    mint(listing_id, shares, current_index, ctx)
+    mint(listing_id, 1, ctx.sender(), shares, current_index, ctx)
+}
+
+#[test_only]
+public fun mint_for_testing_with_number(
+    listing_id: ID,
+    pass_number: u64,
+    original_backer: address,
+    shares: u128,
+    current_index: u128,
+    ctx: &mut TxContext,
+): SupporterPass {
+    mint(listing_id, pass_number, original_backer, shares, current_index, ctx)
 }
 
 #[test_only]
@@ -119,6 +175,11 @@ public fun destroy_for_testing(pass: SupporterPass) {
 #[test_only]
 public fun update_claim_index_for_testing(self: &mut SupporterPass, new_index: u128) {
     update_claim_index(self, new_index)
+}
+
+#[test_only]
+public fun add_claimed_for_testing(self: &mut SupporterPass, amount: u64) {
+    add_claimed(self, amount)
 }
 
 // === Unit Tests ===
@@ -141,6 +202,54 @@ fun test_mint_and_getters() {
     assert!(pass.shares() == shares);
     assert!(pass.claim_index() == current_index);
     assert!(pass.created_epoch() == ctx.epoch());
+    assert!(pass.pass_number() == 1); // Default in test helper
+    assert!(pass.total_claimed() == 0); // Fresh pass has no claims
+    
+    destroy_for_testing(pass);
+}
+
+#[test]
+fun test_mint_with_pass_number_and_provenance() {
+    let mut ctx = tx_context::dummy();
+    let listing_id = object::id_from_address(@0x1);
+    let original_backer = @0xCAFE;
+    let pass_number: u64 = 42;
+    let shares: u128 = 5_000_000_000;
+    
+    let pass = mint_for_testing_with_number(
+        listing_id, 
+        pass_number, 
+        original_backer, 
+        shares, 
+        0, 
+        &mut ctx
+    );
+    
+    assert!(pass.pass_number() == 42);
+    assert!(pass.original_backer() == original_backer);
+    assert!(pass.shares() == shares);
+    assert!(pass.total_claimed() == 0);
+    
+    destroy_for_testing(pass);
+}
+
+#[test]
+fun test_total_claimed_tracking() {
+    let mut ctx = tx_context::dummy();
+    let listing_id = object::id_from_address(@0x1);
+    
+    let mut pass = mint_for_testing(listing_id, 1000, 0, &mut ctx);
+    
+    // Initially zero
+    assert!(pass.total_claimed() == 0);
+    
+    // Add first claim
+    pass.add_claimed_for_testing(100_000_000); // 0.1 SUI
+    assert!(pass.total_claimed() == 100_000_000);
+    
+    // Add second claim
+    pass.add_claimed_for_testing(250_000_000); // 0.25 SUI
+    assert!(pass.total_claimed() == 350_000_000); // Cumulative
     
     destroy_for_testing(pass);
 }

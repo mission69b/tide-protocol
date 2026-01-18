@@ -82,6 +82,8 @@ public struct Listing has key {
     activation_time: u64,
     /// Total number of backers.
     total_backers: u64,
+    /// Next pass number to assign (for sequential "Backer #N" numbering).
+    next_pass_number: u64,
     /// Per-listing pause flag.
     paused: bool,
 }
@@ -129,6 +131,7 @@ public fun new(
         config,
         activation_time: 0,
         total_backers: 0,
+        next_pass_number: 1, // Start from "Backer #1"
         paused: false,
     };
     
@@ -300,6 +303,7 @@ public fun deposit(
     
     let amount = coin.value();
     let listing_id = self.id.to_inner();
+    let backer = ctx.sender();
     
     // Accept deposit and get shares
     let shares = capital_vault.accept_deposit(coin);
@@ -307,9 +311,15 @@ public fun deposit(
     // Update reward vault with new total shares
     reward_vault.set_total_shares(capital_vault.total_shares());
     
-    // Mint supporter pass
+    // Get and increment pass number
+    let pass_number = self.next_pass_number;
+    self.next_pass_number = self.next_pass_number + 1;
+    
+    // Mint supporter pass with provenance
     let pass = supporter_pass::mint(
         listing_id,
+        pass_number,
+        backer,
         shares,
         reward_vault.global_index(),
         ctx,
@@ -357,6 +367,9 @@ public fun claim(
     // Update pass cursor before withdrawal
     pass.update_claim_index(new_claim_index);
     
+    // Track lifetime claimed amount
+    pass.add_claimed(claimable);
+    
     // Withdraw from vault
     let coin = reward_vault.withdraw(claimable, ctx);
     
@@ -372,6 +385,86 @@ public fun claim(
     );
     
     coin
+}
+
+/// Claim rewards from multiple SupporterPasses in a single transaction.
+/// Convenience function that batches claims and returns a single merged coin.
+/// Skips passes with nothing to claim (no error, just skipped).
+/// 
+/// Returns: Single Coin<SUI> with total claimed amount across all passes.
+/// 
+/// Note: Claims are allowed even when paused (per spec).
+public fun claim_many(
+    self: &Listing,
+    _tide: &Tide,
+    reward_vault: &mut RewardVault,
+    passes: &mut vector<SupporterPass>,
+    ctx: &mut TxContext,
+): Coin<SUI> {
+    let mut total = coin::zero<SUI>(ctx);
+    let len = passes.length();
+    let mut i = 0;
+    let mut claimed_count: u64 = 0;
+    let mut total_amount: u64 = 0;
+    
+    while (i < len) {
+        let pass = passes.borrow_mut(i);
+        
+        // Verify pass belongs to this listing
+        pass.assert_listing(self.id.to_inner());
+        
+        let claimable = reward_vault.calculate_claimable(
+            pass.shares(),
+            pass.claim_index(),
+        );
+        
+        // Skip passes with nothing to claim (don't error)
+        if (claimable > 0) {
+            // Capture old index for individual event
+            let old_claim_index = pass.claim_index();
+            let new_claim_index = reward_vault.global_index();
+            
+            // Update pass cursor
+            pass.update_claim_index(new_claim_index);
+            
+            // Track lifetime claimed
+            pass.add_claimed(claimable);
+            
+            // Withdraw and merge
+            let coin = reward_vault.withdraw(claimable, ctx);
+            total.join(coin);
+            
+            // Emit individual claim event for indexing
+            events::emit_claimed(
+                self.id.to_inner(),
+                pass.id(),
+                ctx.sender(),
+                claimable,
+                pass.shares(),
+                old_claim_index,
+                new_claim_index,
+                ctx.epoch(),
+            );
+            
+            claimed_count = claimed_count + 1;
+            total_amount = total_amount + claimable;
+        };
+        
+        i = i + 1;
+    };
+    
+    // Emit batch summary event
+    if (claimed_count > 0) {
+        events::emit_batch_claimed(
+            self.id.to_inner(),
+            ctx.sender(),
+            claimed_count,
+            total_amount,
+            ctx.epoch(),
+        );
+    };
+    
+    total
 }
 
 /// Collect raise fee before first tranche release.
