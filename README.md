@@ -21,18 +21,20 @@ Tide enables projects to raise capital **after product-market fit** without sell
 - **Backers** — Contribute SUI, receive a transferable economic position (SupporterPass), claim rewards
 - **Issuer** — Receives released capital on schedule, routes protocol revenue on-chain
 - **Listing Council** — 3-5 key multisig that gates listing creation, activation, and pause
-- **Tide Treasury** — Receives protocol fees (1% raise fee + 20% of staking rewards)
+- **TreasuryVault** — On-chain vault collecting protocol fees (1% raise fee + 20% of staking rewards), admin-gated withdrawals
 
 ### Key Objects
 
 | Object | Type | Purpose |
 |--------|------|---------|
 | `Tide` | Shared | Global configuration, pause flag, version |
+| `TreasuryVault` | Shared | Protocol fee collection (raise fees + staking splits) |
 | `ListingRegistry` | Shared | Registry of all listings, council-gated creation |
 | `CouncilCap` | Owned | Capability for council-gated operations |
 | `Listing` | Shared | Capital raise parameters, lifecycle state, release schedule |
 | `CapitalVault` | Shared | Holds contributed SUI, manages tranche releases |
 | `RewardVault` | Shared | Holds rewards, maintains cumulative index for fair distribution |
+| `StakingAdapter` | Shared | Manages native Sui staking for locked capital |
 | `SupporterPass` | Owned (NFT) | Backer's transferable position with fixed shares and claim cursor |
 
 ## How It Works
@@ -250,11 +252,24 @@ Where:
 
 | Fee Type | Rate | Destination | Timing |
 |----------|------|-------------|--------|
-| Raise Fee | 1% of total raised | Treasury | Before first tranche release |
-| Staking Split | 20% of staking rewards | Treasury | On reward harvest |
+| Raise Fee | 1% of total raised | TreasuryVault | Before first tranche release |
+| Staking Split | 20% of staking rewards | TreasuryVault | On reward harvest |
 | Revenue Skim | 0% (no fee) | N/A | N/A |
 
 **Note:** All fee parameters are immutable and disclosed in the listing config hash.
+
+### TreasuryVault Operations
+
+The TreasuryVault is a shared object that accumulates protocol fees. Admin-gated operations:
+
+| Operation | Function | Description |
+|-----------|----------|-------------|
+| Withdraw to Admin | `withdraw_from_treasury()` | Withdraw amount to configured admin wallet |
+| Withdraw All | `withdraw_all_from_treasury()` | Withdraw entire balance to admin wallet |
+| Withdraw to Custom | `withdraw_treasury_to()` | Withdraw amount to custom recipient |
+| Update Admin Wallet | `set_admin_wallet()` | Change recipient address for withdrawals |
+
+**Security:** Only AdminCap holders can withdraw from TreasuryVault.
 
 ## Pause Semantics
 
@@ -308,6 +323,7 @@ tide-protocol/
 │   │   ├── Move.toml
 │   │   ├── sources/
 │   │   │   ├── tide.move              # Global config + pause
+│   │   │   ├── treasury_vault.move    # Protocol fee collection vault
 │   │   │   ├── registry.move          # Listing registry (council-gated)
 │   │   │   ├── council.move           # Council capability
 │   │   │   ├── listing.move           # Listing lifecycle

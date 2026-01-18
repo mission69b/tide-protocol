@@ -28,6 +28,7 @@ use tide_core::capital_vault::{Self, CapitalVault};
 use tide_core::reward_vault::{Self, RewardVault, RouteCapability};
 use tide_core::staking_adapter::{Self, StakingAdapter};
 use tide_core::supporter_pass::{Self, SupporterPass};
+use tide_core::treasury_vault::TreasuryVault;
 use tide_core::constants;
 use tide_core::errors;
 use tide_core::events;
@@ -223,6 +224,7 @@ public fun finalize_and_release_initial(
     self: &mut Listing,
     council_cap: &CouncilCap,
     tide: &Tide,
+    treasury_vault: &mut TreasuryVault,
     capital_vault: &mut CapitalVault,
     clock: &Clock,
     ctx: &mut TxContext,
@@ -231,7 +233,7 @@ public fun finalize_and_release_initial(
     finalize(self, council_cap, capital_vault, clock, ctx);
     
     // Collect raise fee
-    collect_raise_fee(self, tide, capital_vault, ctx);
+    collect_raise_fee(self, tide, treasury_vault, capital_vault, ctx);
     
     // Release initial tranche (index 0 = 20%)
     release_tranche_at(self, tide, capital_vault, 0, clock, ctx);
@@ -374,10 +376,11 @@ public fun claim(
 
 /// Collect raise fee before first tranche release.
 /// Must be called after finalization but before any tranche release.
-/// Routes fee directly to Tide Treasury.
+/// Routes fee to TreasuryVault.
 public fun collect_raise_fee(
     self: &Listing,
     tide: &Tide,
+    treasury_vault: &mut TreasuryVault,
     capital_vault: &mut CapitalVault,
     ctx: &mut TxContext,
 ) {
@@ -391,13 +394,9 @@ public fun collect_raise_fee(
     
     let treasury = tide.treasury();
     let fee_coin = capital_vault.collect_raise_fee(treasury, ctx);
-    let fee_amount = fee_coin.value();
     
-    // Transfer fee to treasury
-    transfer::public_transfer(fee_coin, treasury);
-    
-    // Emit TreasuryPayment event (payment_type 0 = raise fee)
-    events::emit_treasury_payment(self.id.to_inner(), 0, fee_amount, treasury);
+    // Deposit fee to treasury vault (with listing context)
+    treasury_vault.deposit_with_type(fee_coin, self.id.to_inner(), 0); // 0 = raise fee
 }
 
 /// Release a specific tranche by index.
@@ -600,12 +599,13 @@ public fun unstake_all(
 /// 1. Unstakes all positions
 /// 2. Re-stakes the original principal
 /// 3. Routes 80% of rewards to RewardVault (backers)
-/// 4. Routes 20% of rewards to Treasury
+/// 4. Routes 20% of rewards to TreasuryVault
 /// 
 /// Callable by anyone (permissionless harvesting).
 public fun harvest_staking_rewards(
     self: &Listing,
     tide: &Tide,
+    treasury_vault: &mut TreasuryVault,
     staking_adapter: &mut StakingAdapter,
     reward_vault: &mut RewardVault,
     route_cap: &RouteCapability,
@@ -663,14 +663,9 @@ public fun harvest_staking_rewards(
             backer_coin.destroy_zero();
         };
         
-        // Transfer treasury portion
+        // Deposit treasury portion to TreasuryVault
         if (treasury_coin.value() > 0) {
-            let treasury_addr = tide.treasury();
-            let treasury_payment = treasury_coin.value();
-            transfer::public_transfer(treasury_coin, treasury_addr);
-            
-            // Emit TreasuryPayment event (payment_type 1 = staking split)
-            events::emit_treasury_payment(self.id.to_inner(), 1, treasury_payment, treasury_addr);
+            treasury_vault.deposit_with_type(treasury_coin, self.id.to_inner(), 1); // 1 = staking split
         } else {
             treasury_coin.destroy_zero();
         };

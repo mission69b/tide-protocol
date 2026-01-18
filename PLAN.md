@@ -13,14 +13,15 @@ Tide v1 uses a **registry-first architecture** with **minimal council gating**:
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
 │                          Tide (Global Config)                       │
-│                     treasury, global_pause, version                  │
+│                   admin_wallet, global_pause, version                │
 └─────────────────────────────────────────────────────────────────────┘
                                     │
-                                    ▼
-┌─────────────────────────────────────────────────────────────────────┐
-│                         ListingRegistry                              │
-│               listing_count, listings[], council-gated               │
-└─────────────────────────────────────────────────────────────────────┘
+              ┌─────────────────────┼─────────────────────┐
+              ▼                     ▼                     ▼
+┌─────────────────────┐ ┌─────────────────────┐ ┌─────────────────────┐
+│   TreasuryVault     │ │   ListingRegistry   │ │    CouncilConfig    │
+│ (protocol fees)     │ │ listing_count, [IDs]│ │ threshold, members  │
+└─────────────────────┘ └─────────────────────┘ └─────────────────────┘
                                     │
                     ┌───────────────┼───────────────┐
                     ▼               ▼               ▼
@@ -45,20 +46,21 @@ Tide v1 uses a **registry-first architecture** with **minimal council gating**:
 Modules are ordered by dependency (foundation first):
 
 ```
-1. constants.move     ─┐
-2. errors.move        ├── Foundation (no deps)
-3. events.move        ─┘
-4. math.move          ── Utilities
-5. tide.move          ── Global config
-6. council.move       ── Council capability (NEW)
-7. registry.move      ── Listing registry (NEW)
-8. supporter_pass.move── Backer position
-9. display.move       ── Display metadata
-10. reward_vault.move  ── Reward distribution
-11. capital_vault.move ── Principal custody
-12. staking_adapter.move ── Staking
-13. listing.move       ── Orchestration (depends on all vaults)
-14. admin.move         ── Admin/convenience actions
+1. constants.move       ─┐
+2. errors.move          ├── Foundation (no deps)
+3. events.move          ─┘
+4. math.move            ── Utilities
+5. tide.move            ── Global config
+6. treasury_vault.move  ── Protocol fee vault (NEW)
+7. council.move         ── Council capability
+8. registry.move        ── Listing registry
+9. supporter_pass.move  ── Backer position
+10. display.move        ── Display metadata
+11. reward_vault.move   ── Reward distribution
+12. capital_vault.move  ── Principal custody
+13. staking_adapter.move── Staking
+14. listing.move        ── Orchestration (depends on all vaults)
+15. admin.move          ── Admin/convenience actions
 ```
 
 ---
@@ -173,6 +175,9 @@ Modules are ordered by dependency (foundation first):
 | `RaiseFeeCollected` | listing_id, fee_amount, treasury, total_raised, fee_bps | Raise fee collection |
 | `StakingRewardSplit` | listing_id, total_rewards, backer_amount, treasury_amount, backer_bps | Staking reward distribution |
 | `TreasuryPayment` | listing_id, payment_type, amount, treasury | Generic treasury payments |
+| `TreasuryDeposit` | vault_id, amount, new_balance | Deposit to TreasuryVault |
+| `TreasuryWithdrawal` | vault_id, amount, recipient, remaining_balance | Withdrawal from TreasuryVault |
+| `TreasuryVaultDeposit` | listing_id, payment_type, amount, vault_id | Fee deposit with listing context |
 
 #### Admin Events
 
@@ -256,7 +261,7 @@ Modules are ordered by dependency (foundation first):
 ```move
 public struct Tide has key {
     id: UID,
-    treasury: address,
+    admin_wallet: address,  // For treasury withdrawals
     paused: bool,
     version: u64,
 }
@@ -270,23 +275,77 @@ public struct AdminCap has key, store {
 
 | Function | Visibility | Description |
 |----------|------------|-------------|
-| `init` | internal | Create Tide + AdminCap |
+| `init` | internal | Create Tide + AdminCap + TreasuryVault |
 | `pause` | public | Set paused = true (requires AdminCap) |
 | `unpause` | public | Set paused = false (requires AdminCap) |
 | `is_paused` | public | View paused state |
 | `assert_not_paused` | public | Abort if paused |
+| `set_admin_wallet` | public | Update admin wallet (requires AdminCap) |
+| `withdraw_from_treasury` | public | Withdraw from TreasuryVault to admin (requires AdminCap) |
+| `withdraw_all_from_treasury` | public | Withdraw all from TreasuryVault (requires AdminCap) |
+| `withdraw_treasury_to` | public | Withdraw to custom recipient (requires AdminCap) |
 
 **Invariants:**
-- Tide holds no capital
-- Tide cannot redirect funds
+- Tide holds no capital directly
+- Fees flow to TreasuryVault
 - Single instance (created in init)
 
 **Tasks:**
 - [x] Define structs
 - [x] Implement init with OTW
 - [x] Implement pause/unpause with AdminCap
+- [x] Implement treasury withdrawal functions
 - [x] Add getters
 - [x] Write tests (5 tests)
+
+**Estimated complexity:** Low
+
+---
+
+### Task 3.1a: `treasury_vault.move` (NEW)
+
+**File:** `contracts/core/sources/treasury_vault.move`
+
+**Purpose:** Protocol fee collection vault.
+
+**Structs:**
+
+```move
+public struct TreasuryVault has key {
+    id: UID,
+    balance: Balance<SUI>,
+    total_deposited: u64,
+    total_withdrawn: u64,
+}
+```
+
+**Functions:**
+
+| Function | Visibility | Description |
+|----------|------------|-------------|
+| `new` | package | Create vault (called from tide init) |
+| `deposit` | public | Deposit SUI to vault |
+| `deposit_with_type` | public | Deposit with listing context and payment type |
+| `withdraw` | package | Withdraw to recipient (called from tide) |
+| `withdraw_all` | package | Withdraw all (called from tide) |
+| `balance` | public | Get current balance |
+| `total_deposited` | public | Get cumulative deposits |
+| `total_withdrawn` | public | Get cumulative withdrawals |
+
+**Fee Sources:**
+- Raise fee (1%) deposited via `collect_raise_fee()`
+- Staking split (20%) deposited via `harvest_staking_rewards()`
+
+**Invariants:**
+- Only AdminCap holders can withdraw (via tide.move)
+- All deposits are logged with events
+
+**Tasks:**
+- [x] Define structs
+- [x] Implement deposit functions
+- [x] Implement withdraw functions (package-private)
+- [x] Add view functions
+- [x] Write tests (2 tests)
 
 **Estimated complexity:** Low
 
@@ -732,9 +791,10 @@ public struct ListingConfig has copy, drop, store {
 - [ ] Documentation review
 
 ### Test Summary
-- **Total Tests:** 41
-- **Unit Tests:** 35
-- **E2E Tests:** 6
+- **Total Tests:** 97 (85 core + 12 adapter)
+- **Core Unit Tests:** 59
+- **Core E2E Tests:** 26
+- **Adapter Tests:** 12
 - **All Passing:** ✅
 
 ---

@@ -1,15 +1,16 @@
 /// Global protocol configuration for Tide Core.
 /// 
 /// Tide is a singleton shared object that holds:
-/// - Treasury address (for future protocol fees)
+/// - Treasury vault ID (for protocol fees)
 /// - Global pause flag
 /// - Protocol version
 /// 
-/// Tide holds no capital and cannot redirect funds.
+/// Tide holds no capital directly - fees flow to TreasuryVault.
 module tide_core::tide;
 
 use tide_core::constants;
 use tide_core::events;
+use tide_core::treasury_vault::{Self, TreasuryVault};
 
 // === Structs ===
 
@@ -24,8 +25,8 @@ public struct AdminCap has key, store {
 /// Global protocol configuration (shared singleton).
 public struct Tide has key {
     id: UID,
-    /// Treasury address for protocol fees (unused in v1).
-    treasury: address,
+    /// Admin wallet address (receives withdrawals from treasury).
+    admin_wallet: address,
     /// Global pause flag.
     paused: bool,
     /// Protocol version for upgrade compatibility.
@@ -45,16 +46,22 @@ fun init(otw: TIDE, ctx: &mut TxContext) {
     // Create global config
     let tide = Tide {
         id: object::new(ctx),
-        treasury: ctx.sender(),
+        admin_wallet: ctx.sender(),
         paused: false,
         version: constants::version!(),
     };
+    
+    // Create treasury vault
+    let treasury_vault = treasury_vault::new(ctx);
     
     // Transfer admin cap to deployer
     transfer::transfer(admin_cap, ctx.sender());
     
     // Share tide as singleton
     transfer::share_object(tide);
+    
+    // Share treasury vault
+    treasury_vault::share(treasury_vault);
 }
 
 // === Admin Functions ===
@@ -79,16 +86,49 @@ public fun unpause(
     events::emit_unpaused(ctx.sender());
 }
 
-/// Update treasury address. Requires AdminCap.
-public fun set_treasury(
+/// Update admin wallet address. Requires AdminCap.
+public fun set_admin_wallet(
     self: &mut Tide,
     _cap: &AdminCap,
-    new_treasury: address,
+    new_wallet: address,
     _ctx: &mut TxContext,
 ) {
-    let old_treasury = self.treasury;
-    self.treasury = new_treasury;
-    events::emit_treasury_updated(old_treasury, new_treasury);
+    let old_wallet = self.admin_wallet;
+    self.admin_wallet = new_wallet;
+    events::emit_treasury_updated(old_wallet, new_wallet);
+}
+
+/// Withdraw SUI from treasury vault to admin wallet. Requires AdminCap.
+public fun withdraw_from_treasury(
+    self: &Tide,
+    _cap: &AdminCap,
+    treasury_vault: &mut TreasuryVault,
+    amount: u64,
+    ctx: &mut TxContext,
+) {
+    treasury_vault::withdraw(treasury_vault, amount, self.admin_wallet, ctx);
+}
+
+/// Withdraw all SUI from treasury vault to admin wallet. Requires AdminCap.
+public fun withdraw_all_from_treasury(
+    self: &Tide,
+    _cap: &AdminCap,
+    treasury_vault: &mut TreasuryVault,
+    ctx: &mut TxContext,
+) {
+    treasury_vault::withdraw_all(treasury_vault, self.admin_wallet, ctx);
+}
+
+/// Withdraw SUI from treasury vault to a custom recipient. Requires AdminCap.
+public fun withdraw_treasury_to(
+    _self: &Tide,
+    _cap: &AdminCap,
+    treasury_vault: &mut TreasuryVault,
+    amount: u64,
+    recipient: address,
+    ctx: &mut TxContext,
+) {
+    treasury_vault::withdraw(treasury_vault, amount, recipient, ctx);
 }
 
 /// Transfer AdminCap to a new holder (admin rotation).
@@ -118,9 +158,14 @@ public fun is_paused(self: &Tide): bool {
     self.paused
 }
 
-/// Get treasury address.
+/// Get admin wallet address.
+public fun admin_wallet(self: &Tide): address {
+    self.admin_wallet
+}
+
+/// Get admin wallet address (legacy alias).
 public fun treasury(self: &Tide): address {
-    self.treasury
+    self.admin_wallet
 }
 
 /// Get protocol version.
@@ -149,7 +194,7 @@ public fun new_admin_cap_for_testing(ctx: &mut TxContext): AdminCap {
 public fun new_tide_for_testing(ctx: &mut TxContext): Tide {
     Tide {
         id: object::new(ctx),
-        treasury: ctx.sender(),
+        admin_wallet: ctx.sender(),
         paused: false,
         version: constants::version!(),
     }
@@ -163,7 +208,7 @@ public fun destroy_admin_cap_for_testing(cap: AdminCap) {
 
 #[test_only]
 public fun destroy_tide_for_testing(tide: Tide) {
-    let Tide { id, treasury: _, paused: _, version: _ } = tide;
+    let Tide { id, admin_wallet: _, paused: _, version: _ } = tide;
     object::delete(id);
 }
 
@@ -195,15 +240,17 @@ fun test_pause_unpause() {
 }
 
 #[test]
-fun test_treasury_update() {
+fun test_admin_wallet_update() {
     let mut ctx = tx_context::dummy();
     let mut tide = new_tide_for_testing(&mut ctx);
     let cap = new_admin_cap_for_testing(&mut ctx);
     
-    let new_treasury = @0xCAFE;
-    tide.set_treasury(&cap, new_treasury, &mut ctx);
+    let new_wallet = @0xCAFE;
+    tide.set_admin_wallet(&cap, new_wallet, &mut ctx);
     
-    assert!(tide.treasury() == new_treasury);
+    assert!(tide.admin_wallet() == new_wallet);
+    // Also test legacy alias
+    assert!(tide.treasury() == new_wallet);
     
     // Cleanup
     destroy_admin_cap_for_testing(cap);

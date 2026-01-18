@@ -39,14 +39,14 @@ public fun unpause_protocol(
     tide.unpause(cap, ctx);
 }
 
-/// Update the treasury address.
-public fun update_treasury(
+/// Update the admin wallet address (for treasury withdrawals).
+public fun update_admin_wallet(
     tide: &mut Tide,
     cap: &AdminCap,
-    new_treasury: address,
+    new_wallet: address,
     ctx: &mut TxContext,
 ) {
-    tide.set_treasury(cap, new_treasury, ctx);
+    tide.set_admin_wallet(cap, new_wallet, ctx);
 }
 
 /// Transfer AdminCap to a new admin (admin rotation).

@@ -470,3 +470,40 @@ public struct ValidatorUpdated has copy, drop {
 public fun emit_validator_updated(listing_id: ID, old_validator: address, new_validator: address) {
     emit(ValidatorUpdated { listing_id, old_validator, new_validator });
 }
+
+// === Treasury Vault Events ===
+
+/// Emitted when SUI is deposited into the treasury vault.
+public struct TreasuryDeposit has copy, drop {
+    vault_id: ID,
+    amount: u64,
+    new_balance: u64,
+}
+
+public fun emit_treasury_deposit(vault_id: ID, amount: u64, new_balance: u64) {
+    emit(TreasuryDeposit { vault_id, amount, new_balance });
+}
+
+/// Emitted when fees are deposited to treasury vault (with listing context).
+public struct TreasuryVaultDeposit has copy, drop {
+    listing_id: ID,
+    payment_type: u8, // 0 = raise fee, 1 = staking split
+    amount: u64,
+    vault_id: ID,
+}
+
+public fun emit_treasury_vault_deposit(listing_id: ID, payment_type: u8, amount: u64, vault_id: ID) {
+    emit(TreasuryVaultDeposit { listing_id, payment_type, amount, vault_id });
+}
+
+/// Emitted when SUI is withdrawn from the treasury vault.
+public struct TreasuryWithdrawal has copy, drop {
+    vault_id: ID,
+    amount: u64,
+    recipient: address,
+    remaining_balance: u64,
+}
+
+public fun emit_treasury_withdrawal(vault_id: ID, amount: u64, recipient: address, remaining_balance: u64) {
+    emit(TreasuryWithdrawal { vault_id, amount, recipient, remaining_balance });
+}

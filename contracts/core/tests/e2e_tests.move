@@ -20,6 +20,7 @@ use tide_core::listing::{Self, Listing};
 use tide_core::capital_vault::{Self, CapitalVault};
 use tide_core::reward_vault::{Self, RewardVault, RouteCapability};
 use tide_core::staking_adapter;
+use tide_core::treasury_vault::{Self, TreasuryVault};
 use tide_core::supporter_pass::SupporterPass;
 use tide_core::constants;
 
@@ -33,7 +34,7 @@ const VALIDATOR: address = @0xA1;
 // === Helper Functions ===
 
 fun setup_protocol(scenario: &mut Scenario) {
-    // Initialize tide module
+    // Initialize tide module (creates Tide + TreasuryVault)
     ts::next_tx(scenario, ADMIN);
     {
         tide::init_for_testing(ts::ctx(scenario));
@@ -49,6 +50,13 @@ fun setup_protocol(scenario: &mut Scenario) {
     ts::next_tx(scenario, ADMIN);
     {
         registry::init_for_testing(ts::ctx(scenario));
+    };
+    
+    // Create treasury vault for testing
+    ts::next_tx(scenario, ADMIN);
+    {
+        let vault = treasury_vault::new_for_testing(ts::ctx(scenario));
+        treasury_vault::share(vault);
     };
 }
 
@@ -194,12 +202,14 @@ fun test_full_lifecycle_single_backer() {
     {
         let listing = ts::take_shared<Listing>(&scenario);
         let tide = ts::take_shared<Tide>(&scenario);
+        let mut treasury_vault = ts::take_shared<TreasuryVault>(&scenario);
         let mut capital_vault = ts::take_shared<CapitalVault>(&scenario);
         let clock = clock::create_for_testing(ts::ctx(&mut scenario));
         
-        // Collect raise fee (1% of 10 SUI = 0.1 SUI)
-        listing.collect_raise_fee(&tide, &mut capital_vault, ts::ctx(&mut scenario));
+        // Collect raise fee (1% of 10 SUI = 0.1 SUI) - deposited to treasury vault
+        listing.collect_raise_fee(&tide, &mut treasury_vault, &mut capital_vault, ts::ctx(&mut scenario));
         assert!(capital_vault.is_raise_fee_collected());
+        assert!(treasury_vault.balance() > 0); // Fee deposited to vault
         
         // Release initial tranche (20% of net = 20% of 9.9 SUI ≈ 1.98 SUI)
         listing.release_tranche_at(&tide, &mut capital_vault, 0, &clock, ts::ctx(&mut scenario));
@@ -207,6 +217,7 @@ fun test_full_lifecycle_single_backer() {
         
         clock::destroy_for_testing(clock);
         ts::return_shared(tide);
+        ts::return_shared(treasury_vault);
         ts::return_shared(listing);
         ts::return_shared(capital_vault);
     };
@@ -1157,11 +1168,12 @@ fun test_listing_complete_lifecycle() {
     {
         let listing = ts::take_shared<Listing>(&scenario);
         let tide = ts::take_shared<Tide>(&scenario);
+        let mut treasury_vault = ts::take_shared<TreasuryVault>(&scenario);
         let mut capital_vault = ts::take_shared<CapitalVault>(&scenario);
         let mut clock = clock::create_for_testing(ts::ctx(&mut scenario));
         
         // Collect raise fee
-        listing.collect_raise_fee(&tide, &mut capital_vault, ts::ctx(&mut scenario));
+        listing.collect_raise_fee(&tide, &mut treasury_vault, &mut capital_vault, ts::ctx(&mut scenario));
         
         // Release all tranches (simulate time passing)
         let num_tranches = capital_vault.num_tranches();
@@ -1176,6 +1188,8 @@ fun test_listing_complete_lifecycle() {
         };
         
         assert!(capital_vault.all_released());
+        
+        ts::return_shared(treasury_vault);
         
         clock::destroy_for_testing(clock);
         ts::return_shared(tide);
@@ -1364,11 +1378,13 @@ fun test_tranche_release_blocked_when_paused() {
     {
         let listing = ts::take_shared<Listing>(&scenario);
         let tide = ts::take_shared<Tide>(&scenario);
+        let mut treasury_vault = ts::take_shared<TreasuryVault>(&scenario);
         let mut capital_vault = ts::take_shared<CapitalVault>(&scenario);
         
-        listing.collect_raise_fee(&tide, &mut capital_vault, ts::ctx(&mut scenario));
+        listing.collect_raise_fee(&tide, &mut treasury_vault, &mut capital_vault, ts::ctx(&mut scenario));
         
         ts::return_shared(tide);
+        ts::return_shared(treasury_vault);
         ts::return_shared(listing);
         ts::return_shared(capital_vault);
     };
@@ -1437,6 +1453,147 @@ fun test_validator_update() {
         ts::return_shared(tide);
         ts::return_shared(staking);
         transfer::public_transfer(council_cap, ADMIN);
+    };
+    
+    ts::end(scenario);
+}
+
+// === Treasury Vault Tests ===
+
+#[test]
+fun test_treasury_vault_deposit_and_withdraw() {
+    let mut scenario = ts::begin(ADMIN);
+    
+    setup_protocol(&mut scenario);
+    create_listing(&mut scenario);
+    activate_listing(&mut scenario);
+    backer_deposit(&mut scenario, BACKER1, 100_000_000_000);
+    
+    // Finalize the listing
+    ts::next_tx(&mut scenario, ADMIN);
+    {
+        let mut listing = ts::take_shared<Listing>(&scenario);
+        let council_cap = ts::take_from_sender<CouncilCap>(&scenario);
+        let mut capital_vault = ts::take_shared<CapitalVault>(&scenario);
+        let clock = clock::create_for_testing(ts::ctx(&mut scenario));
+        
+        listing.finalize(&council_cap, &mut capital_vault, &clock, ts::ctx(&mut scenario));
+        
+        clock::destroy_for_testing(clock);
+        ts::return_shared(listing);
+        ts::return_shared(capital_vault);
+        transfer::public_transfer(council_cap, ADMIN);
+    };
+    
+    // Collect raise fee - should deposit to treasury vault
+    ts::next_tx(&mut scenario, ISSUER);
+    {
+        let listing = ts::take_shared<Listing>(&scenario);
+        let tide = ts::take_shared<Tide>(&scenario);
+        let mut treasury_vault = ts::take_shared<TreasuryVault>(&scenario);
+        let mut capital_vault = ts::take_shared<CapitalVault>(&scenario);
+        
+        // Verify treasury vault starts empty
+        assert!(treasury_vault.balance() == 0);
+        
+        // Collect 1% fee from 100 SUI = 1 SUI
+        listing.collect_raise_fee(&tide, &mut treasury_vault, &mut capital_vault, ts::ctx(&mut scenario));
+        
+        // Verify fee was deposited to vault (1% of 100 SUI = 1 SUI)
+        assert!(treasury_vault.balance() == 1_000_000_000);
+        assert!(treasury_vault.total_deposited() == 1_000_000_000);
+        
+        ts::return_shared(tide);
+        ts::return_shared(treasury_vault);
+        ts::return_shared(listing);
+        ts::return_shared(capital_vault);
+    };
+    
+    // Admin withdraws from treasury vault
+    ts::next_tx(&mut scenario, ADMIN);
+    {
+        let tide = ts::take_shared<Tide>(&scenario);
+        let admin_cap = ts::take_from_sender<AdminCap>(&scenario);
+        let mut treasury_vault = ts::take_shared<TreasuryVault>(&scenario);
+        
+        let vault_balance = treasury_vault.balance();
+        assert!(vault_balance > 0);
+        
+        // Withdraw half to admin wallet
+        tide.withdraw_from_treasury(&admin_cap, &mut treasury_vault, vault_balance / 2, ts::ctx(&mut scenario));
+        
+        assert!(treasury_vault.balance() == vault_balance / 2);
+        assert!(treasury_vault.total_withdrawn() == vault_balance / 2);
+        
+        ts::return_shared(tide);
+        ts::return_shared(treasury_vault);
+        transfer::public_transfer(admin_cap, ADMIN);
+    };
+    
+    // Admin withdraws remaining to custom address
+    let custom_recipient: address = @0xCAFE;
+    ts::next_tx(&mut scenario, ADMIN);
+    {
+        let tide = ts::take_shared<Tide>(&scenario);
+        let admin_cap = ts::take_from_sender<AdminCap>(&scenario);
+        let mut treasury_vault = ts::take_shared<TreasuryVault>(&scenario);
+        
+        let remaining = treasury_vault.balance();
+        
+        // Withdraw to custom recipient
+        tide.withdraw_treasury_to(&admin_cap, &mut treasury_vault, remaining, custom_recipient, ts::ctx(&mut scenario));
+        
+        assert!(treasury_vault.balance() == 0);
+        
+        ts::return_shared(tide);
+        ts::return_shared(treasury_vault);
+        transfer::public_transfer(admin_cap, ADMIN);
+    };
+    
+    // Verify custom recipient received funds
+    ts::next_tx(&mut scenario, custom_recipient);
+    {
+        // Custom recipient should have received the SUI
+        assert!(ts::has_most_recent_for_sender<coin::Coin<SUI>>(&scenario));
+    };
+    
+    ts::end(scenario);
+}
+
+#[test]
+fun test_treasury_vault_withdraw_all() {
+    let mut scenario = ts::begin(ADMIN);
+    
+    setup_protocol(&mut scenario);
+    
+    // Deposit some funds directly for testing
+    ts::next_tx(&mut scenario, ADMIN);
+    {
+        let mut treasury_vault = ts::take_shared<TreasuryVault>(&scenario);
+        
+        treasury_vault::deposit_for_testing(&mut treasury_vault, 50_000_000_000, ts::ctx(&mut scenario));
+        treasury_vault::deposit_for_testing(&mut treasury_vault, 30_000_000_000, ts::ctx(&mut scenario));
+        
+        assert!(treasury_vault.balance() == 80_000_000_000);
+        
+        ts::return_shared(treasury_vault);
+    };
+    
+    // Admin withdraws all
+    ts::next_tx(&mut scenario, ADMIN);
+    {
+        let tide = ts::take_shared<Tide>(&scenario);
+        let admin_cap = ts::take_from_sender<AdminCap>(&scenario);
+        let mut treasury_vault = ts::take_shared<TreasuryVault>(&scenario);
+        
+        tide.withdraw_all_from_treasury(&admin_cap, &mut treasury_vault, ts::ctx(&mut scenario));
+        
+        assert!(treasury_vault.balance() == 0);
+        assert!(treasury_vault.total_withdrawn() == 80_000_000_000);
+        
+        ts::return_shared(tide);
+        ts::return_shared(treasury_vault);
+        transfer::public_transfer(admin_cap, ADMIN);
     };
     
     ts::end(scenario);

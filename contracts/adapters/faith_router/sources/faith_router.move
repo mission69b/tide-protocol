@@ -16,6 +16,7 @@ use sui::sui::SUI;
 use sui_system::sui_system::SuiSystemState;
 
 use tide_core::reward_vault::{RewardVault, RouteCapability};
+use tide_core::treasury_vault::TreasuryVault;
 use tide_core::listing::Listing;
 use tide_core::tide::Tide;
 use tide_core::staking_adapter::StakingAdapter;
@@ -135,13 +136,14 @@ public fun calculate_revenue(self: &FaithRouter, total_fees: u64): u64 {
 /// This function allows the adapter to handle staking reward distribution
 /// using its stored RouteCapability. The rewards are split 80/20:
 /// - 80% → RewardVault (for backers to claim)
-/// - 20% → Treasury
+/// - 20% → TreasuryVault
 /// 
 /// Should be called periodically (e.g., every epoch) by a keeper.
 public fun harvest_and_route(
     self: &mut FaithRouter,
     listing: &Listing,
     tide: &Tide,
+    treasury_vault: &mut TreasuryVault,
     staking_adapter: &mut StakingAdapter,
     reward_vault: &mut RewardVault,
     system_state: &mut SuiSystemState,
@@ -159,6 +161,7 @@ public fun harvest_and_route(
     tide_core::listing::harvest_staking_rewards(
         listing,
         tide,
+        treasury_vault,
         staking_adapter,
         reward_vault,
         route_cap,
