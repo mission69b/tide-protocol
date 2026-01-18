@@ -288,7 +288,7 @@ Tide v1 is intentionally minimal with a **registry-first architecture**:
 | Staking Split | 80% backers / 20% treasury |
 | Min Deposit | 1 SUI per backer |
 | Assets | SUI only |
-| Staking | Native Sui only (placeholder in v1) |
+| Staking | Native Sui staking (fully implemented) |
 | Marketplace | None |
 | Refunds | None |
 
