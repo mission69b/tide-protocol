@@ -17,8 +17,8 @@
 /// 
 /// Example flow:
 /// 1. Wallet requests image for SupporterPass
-/// 2. Sui substitutes: "https://api.tide.xyz/pass/{listing_id}/{id}/image"
-///    → "https://api.tide.xyz/pass/0x123.../0x456.../image"
+/// 2. Sui substitutes: "https://api.tide.am/pass/{listing_id}/{id}/image"
+///    → "https://api.tide.am/pass/0x123.../0x456.../image"
 /// 3. Tide API looks up listing 0x123... metadata
 /// 4. Renders pass image with correct branding (FAITH, future listings, etc.)
 #[allow(lint(self_transfer))]
@@ -38,9 +38,9 @@ const DEFAULT_DESCRIPTION: vector<u8> = b"A transferable position representing {
 
 // URLs use {listing_id} to enable listing-specific rendering
 // The off-chain API looks up listing metadata to determine branding
-const DEFAULT_IMAGE_URL: vector<u8> = b"https://api.tide.xyz/pass/{listing_id}/{id}/image.svg";
-const DEFAULT_LINK: vector<u8> = b"https://app.tide.xyz/listing/{listing_id}/pass/{id}";
-const DEFAULT_PROJECT_URL: vector<u8> = b"https://tide.xyz";
+const DEFAULT_IMAGE_URL: vector<u8> = b"https://api.tide.am/pass/{listing_id}/{id}/image.svg";
+const DEFAULT_LINK: vector<u8> = b"https://app.tide.am/listing/{listing_id}/pass/{id}";
+const DEFAULT_PROJECT_URL: vector<u8> = b"https://tide.am";
 
 // === Display Setup ===
 
