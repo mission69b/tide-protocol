@@ -450,6 +450,7 @@ Tide v1 is intentionally minimal with a **registry-first architecture**:
 | Staking | Native Sui staking (fully implemented) |
 | Marketplace | Native SupporterPass marketplace (5% seller fee) |
 | Refunds | Cancellation + proportional refund claims |
+| Self-Paying Loans | Borrow against SupporterPass, rewards auto-repay |
 
 **Council MAY:** Create listings, activate/finalize, pause/resume
 
@@ -492,10 +493,16 @@ tide-protocol/
 │   │       │   └── faith_router.move
 │   │       └── tests/
 │   │
-│   └── marketplace/             # Tide Marketplace
+│   ├── marketplace/             # Tide Marketplace
+│   │   ├── Move.toml
+│   │   ├── sources/
+│   │   │   └── marketplace.move
+│   │   └── tests/
+│   │
+│   └── loans/                   # Self-Paying Loans
 │       ├── Move.toml
 │       ├── sources/
-│       │   └── marketplace.move
+│       │   └── loan_vault.move
 │       └── tests/
 │
 ├── spec/
@@ -520,16 +527,20 @@ tide-protocol/
 # Build core contracts
 cd contracts/core
 sui move build
-
-# Run tests
 sui move test
 
 # Build adapter
 cd ../adapters/faith_router
 sui move build
+sui move test
 
 # Build marketplace
-cd ../../marketplace
+cd ../marketplace
+sui move build
+sui move test
+
+# Build loans
+cd ../loans
 sui move build
 sui move test
 ```
@@ -549,6 +560,15 @@ See [MARKETPLACE.md](./MARKETPLACE.md) for:
 - 5% seller fee structure
 - List/buy/delist operations
 - Integration with TreasuryVault
+
+## Self-Paying Loans
+
+See [LOANS.md](./LOANS.md) for:
+- Borrow against SupporterPass NFTs
+- Automatic reward-based repayment
+- 50% LTV, 5% APR, 1% origination fee
+- Keeper model for harvesting
+- Liquidation mechanics
 
 ## Protocol Integrations
 

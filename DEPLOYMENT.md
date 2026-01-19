@@ -285,7 +285,74 @@ published-at = "0x<MARKETPLACE_PACKAGE_ID>"
 
 ---
 
-## Step 6: Initialize FAITH Listing (Listing #1)
+## Step 6: Deploy tide_loans Package
+
+> **Note:** For detailed loans documentation, see [LOANS.md](./LOANS.md).
+
+### 6.1 Update Dependency
+
+Edit `contracts/loans/Move.toml`:
+
+```toml
+[dependencies]
+tide_core = { local = "../core" }
+```
+
+### 6.2 Publish Loans
+
+```bash
+cd contracts/loans
+sui client publish --gas-budget 200000000
+```
+
+**Expected output:**
+```
+╭─────────────────────────────────────────────────────────────────────────────╮
+│ Object Changes                                                               │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ Created Objects:                                                             │
+│  ┌──                                                                        │
+│  │ ObjectID: 0x<LOAN_VAULT_ID>                                               │
+│  │ ObjectType: tide_loans::loan_vault::LoanVault                             │
+│  └──                                                                        │
+│  ┌──                                                                        │
+│  │ ObjectID: 0x<UPGRADE_CAP_ID>                                              │
+│  │ ObjectType: sui::package::UpgradeCap                                      │
+│  └──                                                                        │
+│ Published Objects:                                                           │
+│  ┌──                                                                        │
+│  │ ObjectID: 0x<LOANS_PACKAGE_ID>                                            │
+│  │ ObjectType: sui::package::Package                                         │
+│  └──                                                                        │
+╰─────────────────────────────────────────────────────────────────────────────╯
+```
+
+Record:
+- `LOANS_PACKAGE_ID`
+- `LOAN_VAULT_ID`
+- `LOANS_UPGRADE_CAP_ID`
+
+### 6.3 Add Liquidity to Loan Vault
+
+```bash
+# Admin deposits liquidity (e.g., 1000 SUI)
+sui client call \
+  --package $LOANS_PACKAGE_ID \
+  --module loan_vault \
+  --function deposit_liquidity \
+  --args $LOAN_VAULT_ID $ADMIN_CAP_ID $LIQUIDITY_COIN \
+  --gas-budget 100000000
+```
+
+### 6.4 Update Move.toml with Published Address
+
+```toml
+published-at = "0x<LOANS_PACKAGE_ID>"
+```
+
+---
+
+## Step 7: Initialize FAITH Listing (Listing #1)
 
 ### 6.1 Create the Listing
 
@@ -320,7 +387,7 @@ Note: `@0x6` is the Sui Clock object.
 
 ---
 
-## Step 7: Transfer Capabilities (Production)
+## Step 8: Transfer Capabilities (Production)
 
 ### 7.1 Transfer CouncilCap to Multisig
 
@@ -344,7 +411,7 @@ sui client transfer \
 
 ---
 
-## Step 8: Verification
+## Step 9: Verification
 
 ### 8.1 Verify Deployment
 

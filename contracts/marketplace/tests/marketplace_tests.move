@@ -658,6 +658,42 @@ fun test_update_price_wrong_seller_fails() {
     ts::end(scenario);
 }
 
+// === Admin Access Control Tests ===
+
+#[test]
+#[expected_failure(abort_code = tide_marketplace::marketplace::ENotAdmin)]
+fun test_pause_wrong_caller_fails() {
+    let mut scenario = ts::begin(ADMIN);
+    setup_marketplace(&mut scenario);
+    
+    // Non-admin tries to pause (should fail)
+    ts::next_tx(&mut scenario, SELLER);
+    {
+        let mut config = ts::take_shared<MarketplaceConfig>(&scenario);
+        marketplace::pause(&mut config, ts::ctx(&mut scenario));
+        ts::return_shared(config);
+    };
+    
+    ts::end(scenario);
+}
+
+#[test]
+#[expected_failure(abort_code = tide_marketplace::marketplace::ENotAdmin)]
+fun test_transfer_admin_wrong_caller_fails() {
+    let mut scenario = ts::begin(ADMIN);
+    setup_marketplace(&mut scenario);
+    
+    // Non-admin tries to transfer admin (should fail)
+    ts::next_tx(&mut scenario, SELLER);
+    {
+        let mut config = ts::take_shared<MarketplaceConfig>(&scenario);
+        marketplace::transfer_admin(&mut config, SELLER, ts::ctx(&mut scenario));
+        ts::return_shared(config);
+    };
+    
+    ts::end(scenario);
+}
+
 // === View Function Tests ===
 
 #[test]

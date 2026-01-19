@@ -1,0 +1,10 @@
+[package]
+name = "tide_loans"
+edition = "2024"
+version = "1.0.0"
+
+[dependencies]
+tide_core = { local = "../core" }
+
+[addresses]
+tide_loans = "0x0"

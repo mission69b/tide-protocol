@@ -25,8 +25,12 @@ const ENotSeller: u64 = 2;
 const EInsufficientPayment: u64 = 3;
 const EZeroPrice: u64 = 4;
 const EPriceTooLow: u64 = 5;
+const ENotAdmin: u64 = 6;
 
 // === Constants ===
+
+/// Contract version for upgrade compatibility.
+const VERSION: u64 = 1;
 
 /// 5% fee in basis points (500 / 10000 = 5%)
 const FEE_BPS: u64 = 500;
@@ -42,6 +46,8 @@ const MIN_PRICE: u64 = 100_000_000;
 /// Global marketplace configuration (shared, singleton).
 public struct MarketplaceConfig has key {
     id: UID,
+    /// Contract version for upgrade compatibility.
+    version: u64,
     /// Admin address (can pause/unpause).
     admin: address,
     /// Emergency pause flag.
@@ -157,6 +163,7 @@ public struct AdminTransferred has copy, drop {
 fun init(ctx: &mut TxContext) {
     let config = MarketplaceConfig {
         id: object::new(ctx),
+        version: VERSION,
         admin: ctx.sender(),
         paused: false,
         total_volume: 0,
@@ -448,7 +455,7 @@ public fun pause(
     config: &mut MarketplaceConfig,
     ctx: &TxContext,
 ) {
-    assert!(ctx.sender() == config.admin, ENotSeller); // Reusing error
+    assert!(ctx.sender() == config.admin, ENotAdmin);
     config.paused = true;
     
     event::emit(MarketplacePaused {
@@ -463,7 +470,7 @@ public fun unpause(
     config: &mut MarketplaceConfig,
     ctx: &TxContext,
 ) {
-    assert!(ctx.sender() == config.admin, ENotSeller);
+    assert!(ctx.sender() == config.admin, ENotAdmin);
     config.paused = false;
     
     event::emit(MarketplacePaused {
@@ -479,7 +486,7 @@ public fun transfer_admin(
     new_admin: address,
     ctx: &TxContext,
 ) {
-    assert!(ctx.sender() == config.admin, ENotSeller);
+    assert!(ctx.sender() == config.admin, ENotAdmin);
     
     let old_admin = config.admin;
     config.admin = new_admin;
@@ -552,6 +559,11 @@ public fun is_paused(config: &MarketplaceConfig): bool {
 /// Get admin address.
 public fun admin(config: &MarketplaceConfig): address {
     config.admin
+}
+
+/// Get contract version.
+public fun version(config: &MarketplaceConfig): u64 {
+    config.version
 }
 
 /// Get fee basis points (500 = 5%).
