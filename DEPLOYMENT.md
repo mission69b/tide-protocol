@@ -14,12 +14,13 @@ Complete deployment and operations guide for Tide Protocol v1.
 6. [Deploy faith_router Package](#step-4-deploy-faith_router-package)
 7. [Deploy tide_marketplace Package](#step-5-deploy-tide_marketplace-package)
 8. [Deploy tide_loans Package](#step-6-deploy-tide_loans-package)
-9. [Initialize FAITH Listing](#step-7-initialize-faith-listing)
-10. [Transfer Capabilities](#step-8-transfer-capabilities)
-11. [Verification](#step-9-verification)
-12. [Operations Guide](#operations-guide)
-13. [Emergency Procedures](#emergency-procedures)
-14. [Deployment Checklist](#deployment-checklist)
+9. [Setup SupporterPass Display](#step-7-setup-supporterpass-display)
+10. [Initialize FAITH Listing](#step-8-initialize-faith-listing)
+11. [Transfer Capabilities](#step-9-transfer-capabilities)
+12. [Verification](#step-10-verification)
+13. [Operations Guide](#operations-guide)
+14. [Emergency Procedures](#emergency-procedures)
+15. [Deployment Checklist](#deployment-checklist)
 
 ---
 
@@ -247,7 +248,43 @@ sui client ptb \
 
 ---
 
-## Step 7: Initialize FAITH Listing
+## Step 7: Setup SupporterPass Display
+
+After deploying `tide_core`, setup the Display for SupporterPass NFTs:
+
+### 7.1 Create Display Object
+
+```bash
+sui client ptb \
+  --assign pkg @$PACKAGE_ID \
+  --assign publisher @$PUBLISHER_ID \
+  --move-call "pkg::display::create_and_keep_supporter_pass_display" publisher \
+  --gas-budget 50000000
+```
+
+**Record:** `DISPLAY_ID` (Display<SupporterPass> object)
+
+### 7.2 Update Display URLs (Optional)
+
+```bash
+# Update image URL
+sui client ptb \
+  --assign pkg @$PACKAGE_ID \
+  --assign display @$DISPLAY_ID \
+  --move-call "pkg::display::update_image_url" display "b\"https://api.tide.am/pass/{listing_id}/{id}/image.svg\"" \
+  --gas-budget 50000000
+
+# Update link
+sui client ptb \
+  --assign pkg @$PACKAGE_ID \
+  --assign display @$DISPLAY_ID \
+  --move-call "pkg::display::update_link" display "b\"https://app.tide.am/listing/{listing_id}/pass/{id}\"" \
+  --gas-budget 50000000
+```
+
+---
+
+## Step 8: Initialize FAITH Listing
 
 ### 7.1 Create Listing
 
@@ -307,7 +344,7 @@ sui client ptb \
 
 ---
 
-## Step 8: Transfer Capabilities
+## Step 9: Transfer Capabilities
 
 ### 8.1 Transfer CouncilCap to Multisig
 
@@ -329,7 +366,7 @@ sui client transfer \
 
 ---
 
-## Step 9: Verification
+## Step 10: Verification
 
 ### 9.1 Verify Objects
 
