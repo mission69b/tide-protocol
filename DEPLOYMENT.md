@@ -1,5 +1,28 @@
 # Tide Protocol Deployment Guide
 
+Complete deployment and operations guide for Tide Protocol v1.
+
+---
+
+## Table of Contents
+
+1. [Environment Strategy](#environment-strategy)
+2. [Prerequisites](#prerequisites)
+3. [Wallet Setup](#step-1-wallet-setup)
+4. [Environment Configuration](#step-2-environment-configuration)
+5. [Deploy tide_core Package](#step-3-deploy-tide_core-package)
+6. [Deploy faith_router Package](#step-4-deploy-faith_router-package)
+7. [Deploy tide_marketplace Package](#step-5-deploy-tide_marketplace-package)
+8. [Deploy tide_loans Package](#step-6-deploy-tide_loans-package)
+9. [Initialize FAITH Listing](#step-7-initialize-faith-listing)
+10. [Transfer Capabilities](#step-8-transfer-capabilities)
+11. [Verification](#step-9-verification)
+12. [Operations Guide](#operations-guide)
+13. [Emergency Procedures](#emergency-procedures)
+14. [Deployment Checklist](#deployment-checklist)
+
+---
+
 ## Environment Strategy
 
 ```
@@ -32,28 +55,24 @@
    sui client active-address
    ```
 
+3. **All tests passing**
+   ```bash
+   cd contracts/core && sui move test
+   cd ../adapters/faith_router && sui move test
+   cd ../../marketplace && sui move test
+   cd ../loans && sui move test
+   ```
+
 ---
 
 ## Step 1: Wallet Setup
 
 ### 1.1 Create Deployer Wallet
 
-The deployer wallet publishes the contracts and receives the initial `AdminCap` and `CouncilCap`.
-
 ```bash
 # Create new keypair for deployment
 sui keytool generate ed25519
 
-# Output:
-# ╭─────────────────────────────────────────────────────────────────────╮
-# │ Created new keypair for address: 0x1234...                          │
-# │ Secret Recovery Phrase: word1 word2 word3 ... word12                │
-# ╰─────────────────────────────────────────────────────────────────────╯
-```
-
-⚠️ **CRITICAL:** Save the recovery phrase securely! This controls the protocol.
-
-```bash
 # Import to Sui client
 sui keytool import "word1 word2 ... word12" ed25519
 
@@ -61,37 +80,21 @@ sui keytool import "word1 word2 ... word12" ed25519
 sui client switch --address 0x1234...
 ```
 
+⚠️ **CRITICAL:** Save the recovery phrase securely!
+
 ### 1.2 Create Council Multisig (Recommended for Production)
 
-For production, the `CouncilCap` should be transferred to a multisig wallet.
-
-**Option A: Use Sui's Native Multisig**
-
 ```bash
-# Generate 3-5 council member keys
+# Generate council member keys
 sui keytool generate ed25519  # Council member 1
 sui keytool generate ed25519  # Council member 2
 sui keytool generate ed25519  # Council member 3
-# ... etc
 
 # Create multisig address (2-of-3 example)
 sui keytool multi-sig-address \
   --pks <pk1> <pk2> <pk3> \
   --weights 1 1 1 \
   --threshold 2
-```
-
-**Option B: Use a Multisig Service**
-- [Kraken Multisig](https://docs.sui.io/)
-- [Safe-like solutions for Sui]
-
-### 1.3 Treasury Wallet
-
-Create a separate wallet for treasury fee collection:
-
-```bash
-sui keytool generate ed25519
-# Save this as TREASURY_ADDRESS
 ```
 
 ---
@@ -101,9 +104,6 @@ sui keytool generate ed25519
 ### 2.1 Network Configuration
 
 ```bash
-# Check available networks
-sui client envs
-
 # Switch to testnet
 sui client switch --env testnet
 
@@ -115,297 +115,215 @@ sui client switch --env mainnet
 
 **Testnet:**
 ```bash
-# Request from faucet
 sui client faucet
 ```
 
-**Mainnet:**
-- Transfer SUI from exchange or existing wallet
-- Need ~1-2 SUI for deployment gas
+**Mainnet:** Transfer ~2 SUI for deployment gas.
 
 ---
 
 ## Step 3: Deploy tide_core Package
 
-### 3.1 Build the Package
+### 3.1 Build and Publish
 
 ```bash
 cd contracts/core
 sui move build
-```
-
-### 3.2 Publish to Network
-
-```bash
-# Testnet
 sui client publish --gas-budget 500000000
-
-# The output will show:
-# ╭──────────────────────────────────────────────────────────────────────╮
-# │ Object Changes                                                        │
-# ├──────────────────────────────────────────────────────────────────────┤
-# │ Created Objects:                                                      │
-# │  ┌──                                                                  │
-# │  │ ObjectID: 0xPACKAGE_ID                                            │
-# │  │ ObjectType: Package                                               │
-# │  └──                                                                  │
-# │  ┌──                                                                  │
-# │  │ ObjectID: 0xTIDE_OBJECT_ID                                        │
-# │  │ ObjectType: tide_core::tide::Tide                                 │
-# │  └──                                                                  │
-# │  ┌──                                                                  │
-# │  │ ObjectID: 0xADMIN_CAP_ID                                          │
-# │  │ ObjectType: tide_core::tide::AdminCap                             │
-# │  └──                                                                  │
-# │  ┌──                                                                  │
-# │  │ ObjectID: 0xCOUNCIL_CAP_ID                                        │
-# │  │ ObjectType: tide_core::council::CouncilCap                        │
-# │  └──                                                                  │
-# │  ┌──                                                                  │
-# │  │ ObjectID: 0xREGISTRY_ID                                           │
-# │  │ ObjectType: tide_core::registry::ListingRegistry                  │
-# │  └──                                                                  │
-# ╰──────────────────────────────────────────────────────────────────────╯
 ```
 
-### 3.3 Save Deployment Artifacts
+### 3.2 Record Object IDs
 
-Create a deployment record:
+After publishing, record these objects:
+- `PACKAGE_ID` (tide_core)
+- `TIDE` (Tide shared object)
+- `REGISTRY` (ListingRegistry)
+- `COUNCIL_CONFIG` (CouncilConfig)
+- `ADMIN_CAP` (AdminCap - owned)
+- `COUNCIL_CAP` (CouncilCap - owned)
+- `TREASURY_VAULT` (TreasuryVault - shared)
+- `UPGRADE_CAP` (UpgradeCap - owned)
 
-```bash
-# Create deployments directory
-mkdir -p deployments/testnet
-mkdir -p deployments/mainnet
+### 3.3 Update Move.toml
 
-# Save object IDs
-cat > deployments/testnet/tide_core.json << EOF
-{
-  "network": "testnet",
-  "deployed_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-  "deployer": "$(sui client active-address)",
-  "package_id": "0xPACKAGE_ID",
-  "objects": {
-    "tide": "0xTIDE_OBJECT_ID",
-    "admin_cap": "0xADMIN_CAP_ID",
-    "council_cap": "0xCOUNCIL_CAP_ID",
-    "registry": "0xREGISTRY_ID"
-  }
-}
-EOF
+```toml
+published-at = "0x<PACKAGE_ID>"
+
+[addresses]
+tide_core = "0x<PACKAGE_ID>"
 ```
 
 ---
 
 ## Step 4: Deploy faith_router Package
 
-> **Note:** For detailed adapter architecture and integration patterns, see [ADAPTERS.md](./ADAPTERS.md).
-
-### 4.1 Update Dependency
-
-Edit `contracts/adapters/faith_router/Move.toml`:
-
-```toml
-[dependencies]
-tide_core = { local = "../../core" }
-
-# For published deployment, use:
-# [dependencies.tide_core]
-# git = "https://github.com/your-org/tide-protocol.git"
-# subdir = "contracts/core"
-# rev = "v1.0.0"
-```
-
-### 4.2 Publish Adapter
+### 4.1 Build and Publish
 
 ```bash
 cd contracts/adapters/faith_router
+sui move build
 sui client publish --gas-budget 200000000
+```
+
+### 4.2 Record Object IDs
+
+- `FAITH_PACKAGE_ID`
+- `UPGRADE_CAP`
+
+### 4.3 Update Move.toml
+
+```toml
+published-at = "0x<FAITH_PACKAGE_ID>"
+
+[addresses]
+faith_router = "0x<FAITH_PACKAGE_ID>"
 ```
 
 ---
 
 ## Step 5: Deploy tide_marketplace Package
 
-> **Note:** For detailed marketplace documentation, see [MARKETPLACE.md](./MARKETPLACE.md).
-
-### 5.1 Update Dependency
-
-Edit `contracts/marketplace/Move.toml`:
-
-```toml
-[dependencies]
-tide_core = { local = "../core" }
-
-# For published deployment, use:
-# [dependencies.tide_core]
-# git = "https://github.com/your-org/tide-protocol.git"
-# subdir = "contracts/core"
-# rev = "v1.0.0"
-```
-
-### 5.2 Publish Marketplace
+### 5.1 Build and Publish
 
 ```bash
 cd contracts/marketplace
+sui move build
 sui client publish --gas-budget 200000000
 ```
 
-**Expected output:**
-```
-╭─────────────────────────────────────────────────────────────────────────────╮
-│ Object Changes                                                               │
-├─────────────────────────────────────────────────────────────────────────────┤
-│ Created Objects:                                                             │
-│  ┌──                                                                        │
-│  │ ObjectID: 0x<MARKETPLACE_CONFIG_ID>                                       │
-│  │ ObjectType: tide_marketplace::marketplace::MarketplaceConfig              │
-│  └──                                                                        │
-│  ┌──                                                                        │
-│  │ ObjectID: 0x<UPGRADE_CAP_ID>                                              │
-│  │ ObjectType: sui::package::UpgradeCap                                      │
-│  └──                                                                        │
-│ Published Objects:                                                           │
-│  ┌──                                                                        │
-│  │ ObjectID: 0x<MARKETPLACE_PACKAGE_ID>                                      │
-│  │ ObjectType: sui::package::Package                                         │
-│  └──                                                                        │
-╰─────────────────────────────────────────────────────────────────────────────╯
-```
+### 5.2 Record Object IDs
 
-Record:
 - `MARKETPLACE_PACKAGE_ID`
-- `MARKETPLACE_CONFIG_ID`
-- `MARKETPLACE_UPGRADE_CAP_ID`
+- `MARKETPLACE_CONFIG` (MarketplaceConfig - shared)
+- `UPGRADE_CAP`
 
-### 5.3 Update Move.toml with Published Address
+### 5.3 Update Move.toml
 
 ```toml
 published-at = "0x<MARKETPLACE_PACKAGE_ID>"
+
+[addresses]
+tide_marketplace = "0x<MARKETPLACE_PACKAGE_ID>"
 ```
 
 ---
 
 ## Step 6: Deploy tide_loans Package
 
-> **Note:** For detailed loans documentation, see [LOANS.md](./LOANS.md).
-
-### 6.1 Update Dependency
-
-Edit `contracts/loans/Move.toml`:
-
-```toml
-[dependencies]
-tide_core = { local = "../core" }
-```
-
-### 6.2 Publish Loans
+### 6.1 Build and Publish
 
 ```bash
 cd contracts/loans
+sui move build
 sui client publish --gas-budget 200000000
 ```
 
-**Expected output:**
-```
-╭─────────────────────────────────────────────────────────────────────────────╮
-│ Object Changes                                                               │
-├─────────────────────────────────────────────────────────────────────────────┤
-│ Created Objects:                                                             │
-│  ┌──                                                                        │
-│  │ ObjectID: 0x<LOAN_VAULT_ID>                                               │
-│  │ ObjectType: tide_loans::loan_vault::LoanVault                             │
-│  └──                                                                        │
-│  ┌──                                                                        │
-│  │ ObjectID: 0x<UPGRADE_CAP_ID>                                              │
-│  │ ObjectType: sui::package::UpgradeCap                                      │
-│  └──                                                                        │
-│ Published Objects:                                                           │
-│  ┌──                                                                        │
-│  │ ObjectID: 0x<LOANS_PACKAGE_ID>                                            │
-│  │ ObjectType: sui::package::Package                                         │
-│  └──                                                                        │
-╰─────────────────────────────────────────────────────────────────────────────╯
-```
+### 6.2 Record Object IDs
 
-Record:
 - `LOANS_PACKAGE_ID`
-- `LOAN_VAULT_ID`
-- `LOANS_UPGRADE_CAP_ID`
+- `LOAN_VAULT` (LoanVault - shared)
+- `UPGRADE_CAP`
 
-### 6.3 Add Liquidity to Loan Vault
-
-```bash
-# Admin deposits liquidity (e.g., 1000 SUI)
-sui client call \
-  --package $LOANS_PACKAGE_ID \
-  --module loan_vault \
-  --function deposit_liquidity \
-  --args $LOAN_VAULT_ID $ADMIN_CAP_ID $LIQUIDITY_COIN \
-  --gas-budget 100000000
-```
-
-### 6.4 Update Move.toml with Published Address
+### 6.3 Update Move.toml
 
 ```toml
 published-at = "0x<LOANS_PACKAGE_ID>"
+
+[addresses]
+tide_loans = "0x<LOANS_PACKAGE_ID>"
 ```
 
----
-
-## Step 7: Initialize FAITH Listing (Listing #1)
-
-### 6.1 Create the Listing
+### 6.4 Add Liquidity to Loan Vault
 
 ```bash
-# Using Sui CLI with PTB (Programmable Transaction Block)
 sui client ptb \
-  --move-call tide_core::listing::new \
-    @0xREGISTRY_ID \
-    @0xCOUNCIL_CAP_ID \
-    @ISSUER_ADDRESS \
-    @VALIDATOR_ADDRESS \
-    "[]" \
-    "[]" \
-    1000 \
+  --assign loans_pkg @$LOANS_PACKAGE_ID \
+  --assign loan_vault @$LOAN_VAULT \
+  --split-coins gas "[1000000000000]" \
+  --assign liquidity \
+  --move-call "loans_pkg::loan_vault::deposit_liquidity" loan_vault "liquidity.0" \
   --gas-budget 100000000
 ```
 
-Or use a TypeScript deployment script (see below).
+---
 
-### 6.2 Activate the Listing
+## Step 7: Initialize FAITH Listing
+
+### 7.1 Create Listing
 
 ```bash
 sui client ptb \
-  --move-call tide_core::listing::activate \
-    @0xLISTING_ID \
-    @0xCOUNCIL_CAP_ID \
-    @0x6 \
+  --assign pkg @$PACKAGE_ID \
+  --assign registry @$REGISTRY \
+  --assign council_cap @$COUNCIL_CAP \
+  --assign issuer @$ISSUER_ADDRESS \
+  --assign validator @$VALIDATOR_ADDRESS \
+  --move-call "pkg::listing::new" registry council_cap issuer validator "vector[]" "vector[]" 1000u64 \
+  --assign result \
+  --move-call "pkg::listing::share" result.0 \
+  --move-call "pkg::capital_vault::share" result.1 \
+  --move-call "pkg::reward_vault::share" result.2 \
+  --move-call "pkg::staking_adapter::share" result.3 \
+  --transfer-objects "[result.4, result.5]" issuer \
+  --gas-budget 100000000
+```
+
+**Record:**
+- `LISTING` (result.0)
+- `CAPITAL_VAULT` (result.1)
+- `REWARD_VAULT` (result.2)
+- `STAKING_ADAPTER` (result.3)
+- `LISTING_CAP` (result.4) - transferred to issuer
+- `ROUTE_CAP` (result.5) - transferred to issuer
+
+### 7.2 Activate Listing
+
+```bash
+sui client ptb \
+  --assign pkg @$PACKAGE_ID \
+  --assign listing @$LISTING \
+  --assign council_cap @$COUNCIL_CAP \
+  --assign clock @0x6 \
+  --move-call "pkg::listing::activate" listing council_cap clock \
   --gas-budget 50000000
 ```
 
-Note: `@0x6` is the Sui Clock object.
+### 7.3 Create FaithRouter (Optional)
+
+```bash
+sui client ptb \
+  --assign faith_pkg @$FAITH_PACKAGE_ID \
+  --assign route_cap @$ROUTE_CAP \
+  --assign revenue_bps 1000u64 \
+  --assign issuer @$ISSUER_ADDRESS \
+  --move-call "faith_pkg::faith_router::new" route_cap revenue_bps \
+  --assign result \
+  --move-call "faith_pkg::faith_router::share" result.0 \
+  --move-call "faith_pkg::faith_router::transfer_cap" result.1 issuer \
+  --gas-budget 50000000
+```
+
+**Record:** `FAITH_ROUTER` (result.0)
 
 ---
 
-## Step 8: Transfer Capabilities (Production)
+## Step 8: Transfer Capabilities
 
-### 7.1 Transfer CouncilCap to Multisig
+### 8.1 Transfer CouncilCap to Multisig
 
 ```bash
 sui client transfer \
-  --object-id 0xCOUNCIL_CAP_ID \
-  --to 0xMULTISIG_ADDRESS \
+  --object-id $COUNCIL_CAP \
+  --to $MULTISIG_ADDRESS \
   --gas-budget 10000000
 ```
 
-### 7.2 Transfer AdminCap (Optional)
-
-For production, consider transferring AdminCap to a secure cold wallet or multisig:
+### 8.2 Transfer AdminCap (Optional)
 
 ```bash
 sui client transfer \
-  --object-id 0xADMIN_CAP_ID \
-  --to 0xADMIN_MULTISIG_ADDRESS \
+  --object-id $ADMIN_CAP \
+  --to $ADMIN_MULTISIG_ADDRESS \
   --gas-budget 10000000
 ```
 
@@ -413,133 +331,537 @@ sui client transfer \
 
 ## Step 9: Verification
 
-### 8.1 Verify Deployment
+### 9.1 Verify Objects
 
 ```bash
-# Check Tide object
-sui client object 0xTIDE_OBJECT_ID
+# Check package
+sui client object $PACKAGE_ID
 
-# Check Registry
-sui client object 0xREGISTRY_ID
+# Check Tide
+sui client object $TIDE
 
 # Check Listing
-sui client object 0xLISTING_ID
+sui client object $LISTING
 ```
 
-### 8.2 Verify on Explorer
+### 9.2 Verify on Explorer
 
-- **Testnet:** https://suiscan.xyz/testnet/object/0xPACKAGE_ID
-- **Mainnet:** https://suiscan.xyz/mainnet/object/0xPACKAGE_ID
-
----
-
-## Deployment Checklist
-
-### Pre-Deployment
-
-- [ ] All tests passing (`sui move test`)
-- [ ] Build succeeds (`sui move build`)
-- [ ] Wallet funded with sufficient SUI
-- [ ] Recovery phrases securely stored
-- [ ] Treasury address created
-
-### Testnet Deployment
-
-- [ ] Published tide_core package
-- [ ] Published faith_router adapter
-- [ ] Created FAITH listing (Listing #1)
-- [ ] Activated listing
-- [ ] Tested deposit flow
-- [ ] Tested claim flow
-- [ ] Saved deployment artifacts
-
-### Pre-Mainnet
-
-- [ ] Security audit completed
-- [ ] Testnet testing period completed
-- [ ] Council multisig configured
-- [ ] Emergency procedures documented
-- [ ] Monitoring/alerting setup
-
-### Mainnet Deployment
-
-- [ ] Published tide_core package
-- [ ] Published faith_router adapter
-- [ ] Created FAITH listing
-- [ ] Transferred CouncilCap to multisig
-- [ ] Activated listing
-- [ ] Verified on explorer
-- [ ] Announced to community
+- **Testnet:** https://suiscan.xyz/testnet/object/$PACKAGE_ID
+- **Mainnet:** https://suiscan.xyz/mainnet/object/$PACKAGE_ID
 
 ---
 
-## Appendix: TypeScript Deployment Script
+## Operations Guide
 
-Create `scripts/deploy.ts`:
+### Environment Variables
 
-```typescript
-import { SuiClient, getFullnodeUrl } from '@mysten/sui/client';
-import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519';
-import { Transaction } from '@mysten/sui/transactions';
-import { execSync } from 'child_process';
-import * as fs from 'fs';
+Set these after deployment:
 
-const NETWORK = process.env.SUI_NETWORK || 'testnet';
+```bash
+# Core Package & Objects
+export PKG=0x...                # tide_core package
+export TIDE=0x...               # Tide shared object
+export REGISTRY=0x...           # ListingRegistry
+export COUNCIL_CAP=0x...        # CouncilCap
+export TREASURY_VAULT=0x...     # TreasuryVault
 
-async function deploy() {
-  // Initialize client
-  const client = new SuiClient({ url: getFullnodeUrl(NETWORK as 'testnet' | 'mainnet') });
-  
-  // Load deployer keypair (from env or file)
-  const privateKey = process.env.DEPLOYER_PRIVATE_KEY!;
-  const keypair = Ed25519Keypair.fromSecretKey(Buffer.from(privateKey, 'hex'));
-  
-  console.log(`Deploying to ${NETWORK}...`);
-  console.log(`Deployer: ${keypair.toSuiAddress()}`);
-  
-  // Build and publish tide_core
-  console.log('Publishing tide_core...');
-  const { modules, dependencies } = JSON.parse(
-    execSync('sui move build --dump-bytecode-as-base64 --path contracts/core', {
-      encoding: 'utf-8'
-    })
-  );
-  
-  const tx = new Transaction();
-  const [upgradeCap] = tx.publish({ modules, dependencies });
-  tx.transferObjects([upgradeCap], keypair.toSuiAddress());
-  
-  const result = await client.signAndExecuteTransaction({
-    signer: keypair,
-    transaction: tx,
-    options: { showObjectChanges: true }
-  });
-  
-  console.log('Deployed!', result.digest);
-  
-  // Extract object IDs
-  const createdObjects = result.objectChanges?.filter(o => o.type === 'created') || [];
-  
-  // Save deployment info
-  const deployment = {
-    network: NETWORK,
-    digest: result.digest,
-    packageId: createdObjects.find(o => o.objectType === 'package')?.objectId,
-    objects: createdObjects.map(o => ({
-      objectId: o.objectId,
-      objectType: o.objectType
-    }))
-  };
-  
-  fs.writeFileSync(
-    `deployments/${NETWORK}/tide_core.json`,
-    JSON.stringify(deployment, null, 2)
-  );
-  
-  console.log('Saved deployment info to deployments/' + NETWORK + '/tide_core.json');
-}
+# Listing Objects
+export LISTING=0x...            # Listing
+export CAPITAL_VAULT=0x...      # CapitalVault
+export REWARD_VAULT=0x...       # RewardVault
+export STAKING_ADAPTER=0x...    # StakingAdapter
+export ROUTE_CAP=0x...          # RouteCapability
 
-deploy().catch(console.error);
+# Adapter Package
+export FAITH_PKG=0x...          # faith_router package
+export FAITH_ROUTER=0x...       # FaithRouter
+
+# Marketplace Package
+export MARKETPLACE_PKG=0x...     # tide_marketplace package
+export MARKETPLACE_CONFIG=0x...  # MarketplaceConfig
+
+# Loans Package
+export LOANS_PKG=0x...          # tide_loans package
+export LOAN_VAULT=0x...         # LoanVault
+
+# Your Wallet
+export ME=0x...                 # Your wallet address
+
+# System Objects
+export CLOCK=0x6
+export SYSTEM_STATE=0x5
+
+# Validator (get active validator)
+export VALIDATOR=0x...          # Active testnet validator
+```
+
+---
+
+### Backer Operations
+
+#### Deposit SUI
+
+```bash
+sui client ptb \
+  --assign pkg @$PKG \
+  --assign listing @$LISTING \
+  --assign tide @$TIDE \
+  --assign capital_vault @$CAPITAL_VAULT \
+  --assign reward_vault @$REWARD_VAULT \
+  --assign clock @$CLOCK \
+  --assign me @$ME \
+  --assign deposit_coin @$DEPOSIT_COIN_ID \
+  --move-call "pkg::listing::deposit" listing tide capital_vault reward_vault deposit_coin clock \
+  --assign supporter_pass \
+  --transfer-objects "[supporter_pass]" me \
+  --gas-budget 50000000
+```
+
+#### Claim Rewards
+
+```bash
+sui client ptb \
+  --assign pkg @$PKG \
+  --assign listing @$LISTING \
+  --assign tide @$TIDE \
+  --assign reward_vault @$REWARD_VAULT \
+  --assign supporter_pass @$SUPPORTER_PASS \
+  --assign me @$ME \
+  --move-call "pkg::listing::claim" listing tide reward_vault supporter_pass \
+  --assign claimed_coin \
+  --transfer-objects "[claimed_coin]" me \
+  --gas-budget 50000000
+```
+
+#### Claim Many (Batch)
+
+```bash
+sui client ptb \
+  --assign pkg @$PKG \
+  --assign listing @$LISTING \
+  --assign tide @$TIDE \
+  --assign reward_vault @$REWARD_VAULT \
+  --assign me @$ME \
+  --make-move-vec "<tide_core::supporter_pass::SupporterPass>" "[@$PASS1, @$PASS2, @$PASS3]" \
+  --assign passes \
+  --move-call "pkg::listing::claim_many" listing tide reward_vault passes \
+  --assign claimed_coin \
+  --transfer-objects "[claimed_coin]" me \
+  --gas-budget 100000000
+```
+
+#### Claim from Kiosk
+
+```bash
+sui client ptb \
+  --assign pkg @$PKG \
+  --assign listing @$LISTING \
+  --assign tide @$TIDE \
+  --assign reward_vault @$REWARD_VAULT \
+  --assign kiosk @$KIOSK \
+  --assign kiosk_cap @$KIOSK_CAP \
+  --assign pass_id @$PASS_ID \
+  --assign me @$ME \
+  --move-call "pkg::kiosk_ext::claim_from_kiosk" listing tide reward_vault kiosk kiosk_cap pass_id \
+  --assign claimed_coin \
+  --transfer-objects "[claimed_coin]" me \
+  --gas-budget 50000000
+```
+
+---
+
+### Council Operations
+
+#### Finalize Listing
+
+```bash
+sui client ptb \
+  --assign pkg @$PKG \
+  --assign listing @$LISTING \
+  --assign council_cap @$COUNCIL_CAP \
+  --assign capital_vault @$CAPITAL_VAULT \
+  --assign clock @$CLOCK \
+  --move-call "pkg::listing::finalize" listing council_cap capital_vault clock \
+  --gas-budget 50000000
+```
+
+#### Collect Raise Fee (1%)
+
+```bash
+sui client ptb \
+  --assign pkg @$PKG \
+  --assign listing @$LISTING \
+  --assign tide @$TIDE \
+  --assign treasury_vault @$TREASURY_VAULT \
+  --assign capital_vault @$CAPITAL_VAULT \
+  --move-call "pkg::listing::collect_raise_fee" listing tide treasury_vault capital_vault \
+  --gas-budget 50000000
+```
+
+#### Release Tranche
+
+```bash
+sui client ptb \
+  --assign pkg @$PKG \
+  --assign listing @$LISTING \
+  --assign tide @$TIDE \
+  --assign capital_vault @$CAPITAL_VAULT \
+  --assign clock @$CLOCK \
+  --move-call "pkg::listing::release_next_ready_tranche" listing tide capital_vault clock \
+  --gas-budget 50000000
+```
+
+#### Stake Locked Capital
+
+```bash
+sui client ptb \
+  --assign pkg @$PKG \
+  --assign listing @$LISTING \
+  --assign tide @$TIDE \
+  --assign council_cap @$COUNCIL_CAP \
+  --assign capital_vault @$CAPITAL_VAULT \
+  --assign staking_adapter @$STAKING_ADAPTER \
+  --assign system_state @$SYSTEM_STATE \
+  --move-call "pkg::listing::stake_all_locked_capital" listing tide council_cap capital_vault staking_adapter system_state \
+  --gas-budget 100000000
+```
+
+#### Unstake All
+
+```bash
+sui client ptb \
+  --assign pkg @$PKG \
+  --assign listing @$LISTING \
+  --assign tide @$TIDE \
+  --assign council_cap @$COUNCIL_CAP \
+  --assign staking_adapter @$STAKING_ADAPTER \
+  --assign system_state @$SYSTEM_STATE \
+  --assign me @$ME \
+  --move-call "pkg::listing::unstake_all" listing tide council_cap staking_adapter system_state \
+  --assign unstaked_coin \
+  --transfer-objects "[unstaked_coin]" me \
+  --gas-budget 100000000
+```
+
+#### Update Validator
+
+```bash
+sui client ptb \
+  --assign pkg @$PKG \
+  --assign listing @$LISTING \
+  --assign tide @$TIDE \
+  --assign council_cap @$COUNCIL_CAP \
+  --assign staking_adapter @$STAKING_ADAPTER \
+  --assign new_validator @$NEW_VALIDATOR \
+  --move-call "pkg::admin::update_validator" listing tide council_cap staking_adapter new_validator \
+  --gas-budget 50000000
+```
+
+#### Cancel Listing (Refund Flow)
+
+```bash
+sui client ptb \
+  --assign pkg @$PKG \
+  --assign listing @$LISTING \
+  --assign tide @$TIDE \
+  --assign council_cap @$COUNCIL_CAP \
+  --assign capital_vault @$CAPITAL_VAULT \
+  --assign staking_adapter @$STAKING_ADAPTER \
+  --move-call "pkg::listing::cancel_listing" listing tide council_cap capital_vault staking_adapter \
+  --gas-budget 50000000
+```
+
+---
+
+### Refund Operations (Cancelled Listings)
+
+#### Claim Refund
+
+```bash
+sui client ptb \
+  --assign pkg @$PKG \
+  --assign listing @$LISTING \
+  --assign capital_vault @$CAPITAL_VAULT \
+  --assign pass @$SUPPORTER_PASS \
+  --assign me @$ME \
+  --move-call "pkg::listing::claim_refund" listing capital_vault pass \
+  --assign refund_coin \
+  --transfer-objects "[refund_coin]" me \
+  --gas-budget 50000000
+```
+
+#### Claim Multiple Refunds
+
+```bash
+sui client ptb \
+  --assign pkg @$PKG \
+  --assign listing @$LISTING \
+  --assign capital_vault @$CAPITAL_VAULT \
+  --assign me @$ME \
+  --make-move-vec "<tide_core::supporter_pass::SupporterPass>" "[@$PASS1, @$PASS2]" \
+  --assign passes \
+  --move-call "pkg::listing::claim_refunds" listing capital_vault passes \
+  --assign refund_coin \
+  --transfer-objects "[refund_coin]" me \
+  --gas-budget 100000000
+```
+
+---
+
+### Issuer Operations
+
+#### Route Revenue via FaithRouter
+
+```bash
+sui client ptb \
+  --assign faith_pkg @$FAITH_PKG \
+  --assign faith_router @$FAITH_ROUTER \
+  --assign reward_vault @$REWARD_VAULT \
+  --assign revenue_coin @$REVENUE_COIN_ID \
+  --move-call "faith_pkg::faith_router::route" faith_router reward_vault revenue_coin \
+  --gas-budget 50000000
+```
+
+#### Harvest Staking Rewards via FaithRouter
+
+```bash
+sui client ptb \
+  --assign faith_pkg @$FAITH_PKG \
+  --assign faith_router @$FAITH_ROUTER \
+  --assign listing @$LISTING \
+  --assign tide @$TIDE \
+  --assign staking_adapter @$STAKING_ADAPTER \
+  --assign reward_vault @$REWARD_VAULT \
+  --assign treasury_vault @$TREASURY_VAULT \
+  --assign system_state @$SYSTEM_STATE \
+  --move-call "faith_pkg::faith_router::harvest_and_route" faith_router listing tide staking_adapter reward_vault treasury_vault system_state \
+  --gas-budget 100000000
+```
+
+---
+
+### Marketplace Operations
+
+#### List SupporterPass for Sale
+
+```bash
+sui client ptb \
+  --assign mkt_pkg @$MARKETPLACE_PKG \
+  --assign config @$MARKETPLACE_CONFIG \
+  --assign pass @$SUPPORTER_PASS \
+  --assign price 10000000000u64 \
+  --move-call "mkt_pkg::marketplace::list_for_sale" config pass price \
+  --gas-budget 50000000
+```
+
+#### Buy SupporterPass
+
+```bash
+sui client ptb \
+  --assign mkt_pkg @$MARKETPLACE_PKG \
+  --assign config @$MARKETPLACE_CONFIG \
+  --assign treasury_vault @$TREASURY_VAULT \
+  --assign sale_listing @$SALE_LISTING_ID \
+  --assign payment_coin @$PAYMENT_COIN_ID \
+  --assign me @$ME \
+  --move-call "mkt_pkg::marketplace::buy" config treasury_vault sale_listing payment_coin \
+  --assign result \
+  --transfer-objects "[result.0]" me \
+  --transfer-objects "[result.2]" me \
+  --gas-budget 50000000
+```
+
+Note: result.0 = SupporterPass, result.1 = PurchaseReceipt, result.2 = change Coin
+
+#### Buy and Take (Simple)
+
+```bash
+sui client ptb \
+  --assign mkt_pkg @$MARKETPLACE_PKG \
+  --assign config @$MARKETPLACE_CONFIG \
+  --assign treasury_vault @$TREASURY_VAULT \
+  --assign sale_listing @$SALE_LISTING_ID \
+  --assign payment_coin @$PAYMENT_COIN_ID \
+  --move-call "mkt_pkg::marketplace::buy_and_take" config treasury_vault sale_listing payment_coin \
+  --gas-budget 50000000
+```
+
+#### Delist
+
+```bash
+sui client ptb \
+  --assign mkt_pkg @$MARKETPLACE_PKG \
+  --assign config @$MARKETPLACE_CONFIG \
+  --assign sale_listing @$SALE_LISTING_ID \
+  --assign me @$ME \
+  --move-call "mkt_pkg::marketplace::delist" config sale_listing \
+  --assign pass \
+  --transfer-objects "[pass]" me \
+  --gas-budget 50000000
+```
+
+#### Update Price
+
+```bash
+sui client ptb \
+  --assign mkt_pkg @$MARKETPLACE_PKG \
+  --assign sale_listing @$SALE_LISTING_ID \
+  --assign new_price 15000000000u64 \
+  --move-call "mkt_pkg::marketplace::update_price" sale_listing new_price \
+  --gas-budget 50000000
+```
+
+#### Pause Marketplace (Admin)
+
+```bash
+sui client ptb \
+  --assign mkt_pkg @$MARKETPLACE_PKG \
+  --assign config @$MARKETPLACE_CONFIG \
+  --move-call "mkt_pkg::marketplace::pause" config \
+  --gas-budget 50000000
+```
+
+---
+
+### Loans Operations
+
+#### Borrow Against SupporterPass
+
+```bash
+sui client ptb \
+  --assign loans_pkg @$LOANS_PKG \
+  --assign loan_vault @$LOAN_VAULT \
+  --assign listing @$LISTING \
+  --assign tide @$TIDE \
+  --assign capital_vault @$CAPITAL_VAULT \
+  --assign pass @$SUPPORTER_PASS \
+  --assign loan_amount 5000000000u64 \
+  --assign me @$ME \
+  --move-call "loans_pkg::loan_vault::borrow" loan_vault listing tide capital_vault pass loan_amount \
+  --assign result \
+  --transfer-objects "[result.0]" me \
+  --transfer-objects "[result.1]" me \
+  --gas-budget 100000000
+```
+
+Note: result.0 = LoanReceipt, result.1 = loan Coin
+
+#### Repay Loan
+
+```bash
+sui client ptb \
+  --assign loans_pkg @$LOANS_PKG \
+  --assign loan_vault @$LOAN_VAULT \
+  --assign receipt @$LOAN_RECEIPT \
+  --assign payment_coin @$PAYMENT_COIN_ID \
+  --assign me @$ME \
+  --move-call "loans_pkg::loan_vault::repay" loan_vault receipt payment_coin \
+  --assign refund \
+  --transfer-objects "[refund]" me \
+  --gas-budget 50000000
+```
+
+#### Harvest and Repay (Keeper)
+
+```bash
+sui client ptb \
+  --assign loans_pkg @$LOANS_PKG \
+  --assign loan_vault @$LOAN_VAULT \
+  --assign loan_id @$LOAN_ID \
+  --assign listing @$LISTING \
+  --assign tide @$TIDE \
+  --assign reward_vault @$REWARD_VAULT \
+  --assign me @$ME \
+  --move-call "loans_pkg::loan_vault::harvest_and_repay" loan_vault loan_id listing tide reward_vault \
+  --assign keeper_tip \
+  --transfer-objects "[keeper_tip]" me \
+  --gas-budget 100000000
+```
+
+#### Withdraw Collateral (After Repayment)
+
+```bash
+sui client ptb \
+  --assign loans_pkg @$LOANS_PKG \
+  --assign loan_vault @$LOAN_VAULT \
+  --assign receipt @$LOAN_RECEIPT \
+  --assign me @$ME \
+  --move-call "loans_pkg::loan_vault::withdraw_collateral" loan_vault receipt \
+  --assign pass \
+  --transfer-objects "[pass]" me \
+  --gas-budget 50000000
+```
+
+#### Liquidate Loan
+
+```bash
+sui client ptb \
+  --assign loans_pkg @$LOANS_PKG \
+  --assign loan_vault @$LOAN_VAULT \
+  --assign loan_id @$LOAN_ID \
+  --assign capital_vault @$CAPITAL_VAULT \
+  --assign payment_coin @$PAYMENT_COIN_ID \
+  --assign me @$ME \
+  --move-call "loans_pkg::loan_vault::liquidate" loan_vault loan_id capital_vault payment_coin \
+  --assign pass \
+  --transfer-objects "[pass]" me \
+  --gas-budget 100000000
+```
+
+#### Deposit Liquidity (Admin)
+
+```bash
+sui client ptb \
+  --assign loans_pkg @$LOANS_PKG \
+  --assign loan_vault @$LOAN_VAULT \
+  --assign liquidity_coin @$LIQUIDITY_COIN_ID \
+  --move-call "loans_pkg::loan_vault::deposit_liquidity" loan_vault liquidity_coin \
+  --gas-budget 50000000
+```
+
+#### Withdraw Liquidity (Admin)
+
+```bash
+sui client ptb \
+  --assign loans_pkg @$LOANS_PKG \
+  --assign loan_vault @$LOAN_VAULT \
+  --assign amount 1000000000u64 \
+  --assign me @$ME \
+  --move-call "loans_pkg::loan_vault::withdraw_liquidity" loan_vault amount \
+  --assign withdrawn \
+  --transfer-objects "[withdrawn]" me \
+  --gas-budget 50000000
+```
+
+---
+
+### Admin Operations
+
+#### Withdraw from Treasury
+
+```bash
+sui client ptb \
+  --assign pkg @$PKG \
+  --assign tide @$TIDE \
+  --assign admin_cap @$ADMIN_CAP \
+  --assign treasury_vault @$TREASURY_VAULT \
+  --assign amount 1000000000u64 \
+  --assign me @$ME \
+  --move-call "pkg::tide::withdraw_from_treasury" tide admin_cap treasury_vault amount \
+  --assign withdrawn \
+  --transfer-objects "[withdrawn]" me \
+  --gas-budget 50000000
+```
+
+#### Get Active Validators
+
+```bash
+sui client call \
+  --package 0x3 \
+  --module sui_system \
+  --function active_validator_addresses \
+  --args 0x5 \
+  --gas-budget 10000000
 ```
 
 ---
@@ -548,27 +870,171 @@ deploy().catch(console.error);
 
 ### Global Pause
 
-If a critical issue is discovered:
+```bash
+sui client ptb \
+  --assign pkg @$PKG \
+  --assign tide @$TIDE \
+  --assign admin_cap @$ADMIN_CAP \
+  --move-call "pkg::tide::pause" tide admin_cap \
+  --gas-budget 10000000
+```
+
+### Global Unpause
 
 ```bash
 sui client ptb \
-  --move-call tide_core::tide::pause \
-    @0xTIDE_ID \
-    @0xADMIN_CAP_ID \
+  --assign pkg @$PKG \
+  --assign tide @$TIDE \
+  --assign admin_cap @$ADMIN_CAP \
+  --move-call "pkg::tide::unpause" tide admin_cap \
   --gas-budget 10000000
 ```
 
 ### Per-Listing Pause
 
-To pause a specific listing:
+```bash
+sui client ptb \
+  --assign pkg @$PKG \
+  --assign listing @$LISTING \
+  --assign council_cap @$COUNCIL_CAP \
+  --move-call "pkg::listing::pause" listing council_cap \
+  --gas-budget 10000000
+```
+
+### Per-Listing Unpause
 
 ```bash
 sui client ptb \
-  --move-call tide_core::listing::pause \
-    @0xLISTING_ID \
-    @0xCOUNCIL_CAP_ID \
+  --assign pkg @$PKG \
+  --assign listing @$LISTING \
+  --assign council_cap @$COUNCIL_CAP \
+  --move-call "pkg::listing::unpause" listing council_cap \
   --gas-budget 10000000
 ```
+
+### Pause Marketplace
+
+```bash
+sui client ptb \
+  --assign mkt_pkg @$MARKETPLACE_PKG \
+  --assign config @$MARKETPLACE_CONFIG \
+  --move-call "mkt_pkg::marketplace::pause" config \
+  --gas-budget 10000000
+```
+
+### Pause Loans
+
+```bash
+sui client ptb \
+  --assign loans_pkg @$LOANS_PKG \
+  --assign loan_vault @$LOAN_VAULT \
+  --move-call "loans_pkg::loan_vault::pause" loan_vault \
+  --gas-budget 10000000
+```
+
+---
+
+## Deployment Checklist
+
+### Pre-Deployment
+- [ ] All tests passing (`sui move test` for all packages)
+- [ ] Build succeeds (`sui move build` for all packages)
+- [ ] Wallet funded with sufficient SUI (~2 SUI for all packages)
+- [ ] Recovery phrases securely stored
+- [ ] Active validator address verified
+
+### Testnet Deployment
+- [ ] Published tide_core package
+- [ ] Published faith_router adapter
+- [ ] Published tide_marketplace package
+- [ ] Published tide_loans package
+- [ ] Created FAITH listing (Listing #1)
+- [ ] Created FaithRouter
+- [ ] Activated listing
+- [ ] Tested deposit flow
+- [ ] Tested claim flow
+- [ ] Tested marketplace list/buy flow
+- [ ] Tested loans borrow/repay flow
+- [ ] Tested staking flow
+- [ ] Added liquidity to LoanVault
+- [ ] Saved deployment artifacts
+
+### Pre-Mainnet
+- [ ] Security audit completed
+- [ ] Testnet testing period completed
+- [ ] Council multisig configured
+- [ ] Emergency procedures documented
+- [ ] Monitoring/alerting setup
+
+### Mainnet Deployment
+- [ ] Published all packages
+- [ ] Created FAITH listing
+- [ ] Transferred CouncilCap to multisig
+- [ ] Transferred AdminCap to cold storage
+- [ ] Activated listing
+- [ ] Verified on explorer
+- [ ] Announced to community
+
+---
+
+## Function Signatures Reference
+
+### Core Package (tide_core)
+
+| Function | Signature |
+|----------|-----------|
+| `listing::new` | `(registry, council_cap, issuer, validator, tranche_amounts, tranche_times, revenue_bps)` |
+| `listing::activate` | `(listing, council_cap, clock)` |
+| `listing::finalize` | `(listing, council_cap, capital_vault, clock)` |
+| `listing::deposit` | `(listing, tide, capital_vault, reward_vault, coin, clock) → SupporterPass` |
+| `listing::claim` | `(listing, tide, reward_vault, pass) → Coin<SUI>` |
+| `listing::claim_many` | `(listing, tide, reward_vault, passes) → Coin<SUI>` |
+| `listing::collect_raise_fee` | `(listing, tide, treasury_vault, capital_vault)` |
+| `listing::release_next_ready_tranche` | `(listing, tide, capital_vault, clock)` |
+| `listing::stake_all_locked_capital` | `(listing, tide, council_cap, capital_vault, staking_adapter, system_state)` |
+| `listing::unstake_all` | `(listing, tide, council_cap, staking_adapter, system_state) → Coin<SUI>` |
+| `listing::cancel_listing` | `(listing, tide, council_cap, capital_vault, staking_adapter)` |
+| `listing::claim_refund` | `(listing, capital_vault, pass) → Coin<SUI>` |
+| `listing::claim_refunds` | `(listing, capital_vault, passes) → Coin<SUI>` |
+| `kiosk_ext::claim_from_kiosk` | `(listing, tide, reward_vault, kiosk, kiosk_cap, pass_id) → Coin<SUI>` |
+| `kiosk_ext::claim_many_from_kiosk` | `(listing, tide, reward_vault, kiosk, kiosk_cap, pass_ids) → Coin<SUI>` |
+
+### Faith Router Package (faith_router)
+
+| Function | Signature |
+|----------|-----------|
+| `faith_router::new` | `(route_cap, revenue_bps) → (FaithRouter, FaithRouterCap)` |
+| `faith_router::route` | `(router, reward_vault, coin)` |
+| `faith_router::harvest_and_route` | `(router, listing, tide, staking_adapter, reward_vault, treasury_vault, system_state)` |
+| `faith_router::calculate_revenue` | `(router, total_fees) → u64` |
+
+### Marketplace Package (tide_marketplace)
+
+| Function | Signature |
+|----------|-----------|
+| `marketplace::list_for_sale` | `(config, pass, price) → ID` |
+| `marketplace::delist` | `(config, sale_listing) → SupporterPass` |
+| `marketplace::update_price` | `(sale_listing, new_price)` |
+| `marketplace::buy` | `(config, treasury_vault, sale_listing, payment) → (SupporterPass, PurchaseReceipt, Coin<SUI>)` |
+| `marketplace::buy_and_take` | `(config, treasury_vault, sale_listing, payment)` |
+| `marketplace::pause` | `(config)` |
+| `marketplace::unpause` | `(config)` |
+| `marketplace::transfer_admin` | `(config, new_admin)` |
+
+### Loans Package (tide_loans)
+
+| Function | Signature |
+|----------|-----------|
+| `loan_vault::borrow` | `(vault, listing, tide, capital_vault, pass, loan_amount) → (LoanReceipt, Coin<SUI>)` |
+| `loan_vault::repay` | `(vault, receipt, payment) → Coin<SUI>` |
+| `loan_vault::harvest_and_repay` | `(vault, loan_id, listing, tide, reward_vault) → Coin<SUI>` |
+| `loan_vault::withdraw_collateral` | `(vault, receipt) → SupporterPass` |
+| `loan_vault::liquidate` | `(vault, loan_id, capital_vault, payment) → SupporterPass` |
+| `loan_vault::deposit_liquidity` | `(vault, coin)` |
+| `loan_vault::withdraw_liquidity` | `(vault, amount) → Coin<SUI>` |
+| `loan_vault::pause` | `(vault)` |
+| `loan_vault::unpause` | `(vault)` |
+| `loan_vault::get_health_factor` | `(vault, loan_id, capital_vault) → (u64, u64)` |
 
 ---
 
