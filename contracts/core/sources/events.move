@@ -532,3 +532,62 @@ public struct TreasuryWithdrawal has copy, drop {
 public fun emit_treasury_withdrawal(vault_id: ID, amount: u64, recipient: address, remaining_balance: u64) {
     emit(TreasuryWithdrawal { vault_id, amount, recipient, remaining_balance });
 }
+
+// === Cancellation & Refund Events ===
+
+/// Emitted when a listing is cancelled.
+public struct ListingCancelled has copy, drop {
+    /// ID of the cancelled listing
+    listing_id: ID,
+    /// Address that triggered cancellation
+    cancelled_by: address,
+    /// Previous state before cancellation
+    previous_state: u8,
+    /// Total capital to be refunded
+    total_refundable: u64,
+    /// Number of passes eligible for refund
+    total_passes: u64,
+    /// Epoch when cancelled
+    epoch: u64,
+}
+
+public fun emit_listing_cancelled(
+    listing_id: ID,
+    cancelled_by: address,
+    previous_state: u8,
+    total_refundable: u64,
+    total_passes: u64,
+    epoch: u64,
+) {
+    emit(ListingCancelled { listing_id, cancelled_by, previous_state, total_refundable, total_passes, epoch });
+}
+
+/// Emitted when a backer claims a refund.
+public struct RefundClaimed has copy, drop {
+    /// ID of the listing
+    listing_id: ID,
+    /// ID of the pass that was refunded
+    pass_id: ID,
+    /// Backer who received the refund
+    backer: address,
+    /// Refund amount in MIST
+    amount: u64,
+    /// Shares that were refunded
+    shares: u128,
+    /// Remaining refundable balance in vault
+    remaining_balance: u64,
+    /// Epoch when refund occurred
+    epoch: u64,
+}
+
+public fun emit_refund_claimed(
+    listing_id: ID,
+    pass_id: ID,
+    backer: address,
+    amount: u64,
+    shares: u128,
+    remaining_balance: u64,
+    epoch: u64,
+) {
+    emit(RefundClaimed { listing_id, pass_id, backer, amount, shares, remaining_balance, epoch });
+}

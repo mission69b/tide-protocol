@@ -67,3 +67,6 @@ public macro fun state_finalized(): u8 { 2 }
 
 /// Listing is completed, all released, claims only.
 public macro fun state_completed(): u8 { 3 }
+
+/// Listing is cancelled, refunds available.
+public macro fun state_cancelled(): u8 { 4 }

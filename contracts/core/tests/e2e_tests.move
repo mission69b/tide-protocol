@@ -12,8 +12,10 @@ use sui::test_scenario::{Self as ts, Scenario};
 use sui::coin;
 use sui::sui::SUI;
 use sui::clock;
+use sui::kiosk;
 
 use tide_core::tide::{Self, Tide, AdminCap};
+use tide_core::kiosk_ext;
 use tide_core::council::{Self, CouncilCap};
 use tide_core::registry::{Self, ListingRegistry};
 use tide_core::listing::{Self, Listing};
@@ -2060,6 +2062,405 @@ fun test_claim_many_empty_vector() {
         ts::return_shared(listing);
         ts::return_shared(tide);
         ts::return_shared(reward_vault);
+    };
+    
+    ts::end(scenario);
+}
+
+// =============================================================================
+// Kiosk Extension Tests (claim while listed on marketplace)
+// =============================================================================
+
+#[test]
+fun test_claim_from_kiosk() {
+    let mut scenario = ts::begin(ADMIN);
+    
+    setup_protocol(&mut scenario);
+    create_listing(&mut scenario);
+    activate_listing(&mut scenario);
+    
+    // Backer deposits and gets a pass
+    ts::next_tx(&mut scenario, BACKER1);
+    {
+        let mut listing = ts::take_shared<Listing>(&scenario);
+        let tide = ts::take_shared<Tide>(&scenario);
+        let mut capital_vault = ts::take_shared<CapitalVault>(&scenario);
+        let mut reward_vault = ts::take_shared<RewardVault>(&scenario);
+        let clock = clock::create_for_testing(ts::ctx(&mut scenario));
+        
+        let coin = coin::mint_for_testing<SUI>(10_000_000_000, ts::ctx(&mut scenario));
+        let pass = listing.deposit(&tide, &mut capital_vault, &mut reward_vault, coin, &clock, ts::ctx(&mut scenario));
+        
+        transfer::public_transfer(pass, BACKER1);
+        clock::destroy_for_testing(clock);
+        ts::return_shared(listing);
+        ts::return_shared(tide);
+        ts::return_shared(capital_vault);
+        ts::return_shared(reward_vault);
+    };
+    
+    // Place pass in kiosk and capture the ID for later claim
+    let pass_id: ID;
+    ts::next_tx(&mut scenario, BACKER1);
+    {
+        let (mut kiosk, kiosk_cap) = kiosk::new(ts::ctx(&mut scenario));
+        let pass = ts::take_from_sender<SupporterPass>(&scenario);
+        pass_id = object::id(&pass);
+        
+        kiosk::place(&mut kiosk, &kiosk_cap, pass);
+        
+        transfer::public_share_object(kiosk);
+        transfer::public_transfer(kiosk_cap, BACKER1);
+    };
+    
+    // Route some revenue
+    ts::next_tx(&mut scenario, ISSUER);
+    {
+        let mut reward_vault = ts::take_shared<RewardVault>(&scenario);
+        let route_cap = ts::take_from_sender<RouteCapability>(&scenario);
+        
+        let revenue = coin::mint_for_testing<SUI>(100_000_000_000, ts::ctx(&mut scenario));
+        reward_vault.deposit_rewards(&route_cap, revenue, ts::ctx(&mut scenario));
+        
+        ts::return_shared(reward_vault);
+        transfer::public_transfer(route_cap, ISSUER);
+    };
+    
+    // Claim rewards while pass is in Kiosk
+    ts::next_tx(&mut scenario, BACKER1);
+    {
+        let listing = ts::take_shared<Listing>(&scenario);
+        let tide = ts::take_shared<Tide>(&scenario);
+        let mut reward_vault = ts::take_shared<RewardVault>(&scenario);
+        let mut kiosk = ts::take_shared<kiosk::Kiosk>(&scenario);
+        let kiosk_cap = ts::take_from_sender<kiosk::KioskOwnerCap>(&scenario);
+        
+        // Claim from kiosk - pass stays in kiosk!
+        let reward = kiosk_ext::claim_from_kiosk(
+            &listing,
+            &tide,
+            &mut reward_vault,
+            &mut kiosk,
+            &kiosk_cap,
+            pass_id,
+            ts::ctx(&mut scenario),
+        );
+        
+        // Should get 100 SUI (100% of rewards)
+        assert!(reward.value() >= 99_000_000_000);
+        
+        coin::burn_for_testing(reward);
+        
+        // Verify pass is still in kiosk
+        assert!(kiosk::has_item(&kiosk, pass_id));
+        
+        ts::return_shared(listing);
+        ts::return_shared(tide);
+        ts::return_shared(reward_vault);
+        ts::return_shared(kiosk);
+        transfer::public_transfer(kiosk_cap, BACKER1);
+    };
+    
+    ts::end(scenario);
+}
+
+#[test]
+fun test_claim_many_from_kiosk() {
+    let mut scenario = ts::begin(ADMIN);
+    
+    setup_protocol(&mut scenario);
+    create_listing(&mut scenario);
+    activate_listing(&mut scenario);
+    
+    // Backer makes 2 deposits
+    ts::next_tx(&mut scenario, BACKER1);
+    {
+        let mut listing = ts::take_shared<Listing>(&scenario);
+        let tide = ts::take_shared<Tide>(&scenario);
+        let mut capital_vault = ts::take_shared<CapitalVault>(&scenario);
+        let mut reward_vault = ts::take_shared<RewardVault>(&scenario);
+        let clock = clock::create_for_testing(ts::ctx(&mut scenario));
+        
+        let coin1 = coin::mint_for_testing<SUI>(10_000_000_000, ts::ctx(&mut scenario));
+        let pass1 = listing.deposit(&tide, &mut capital_vault, &mut reward_vault, coin1, &clock, ts::ctx(&mut scenario));
+        
+        let coin2 = coin::mint_for_testing<SUI>(20_000_000_000, ts::ctx(&mut scenario));
+        let pass2 = listing.deposit(&tide, &mut capital_vault, &mut reward_vault, coin2, &clock, ts::ctx(&mut scenario));
+        
+        transfer::public_transfer(pass1, BACKER1);
+        transfer::public_transfer(pass2, BACKER1);
+        clock::destroy_for_testing(clock);
+        ts::return_shared(listing);
+        ts::return_shared(tide);
+        ts::return_shared(capital_vault);
+        ts::return_shared(reward_vault);
+    };
+    
+    // Place both passes in a Kiosk and capture IDs
+    let pass_id1: ID;
+    let pass_id2: ID;
+    ts::next_tx(&mut scenario, BACKER1);
+    {
+        let (mut kiosk, kiosk_cap) = kiosk::new(ts::ctx(&mut scenario));
+        let pass1 = ts::take_from_sender<SupporterPass>(&scenario);
+        let pass2 = ts::take_from_sender<SupporterPass>(&scenario);
+        pass_id1 = object::id(&pass1);
+        pass_id2 = object::id(&pass2);
+        
+        kiosk::place(&mut kiosk, &kiosk_cap, pass1);
+        kiosk::place(&mut kiosk, &kiosk_cap, pass2);
+        
+        transfer::public_share_object(kiosk);
+        transfer::public_transfer(kiosk_cap, BACKER1);
+    };
+    
+    // Route revenue
+    ts::next_tx(&mut scenario, ISSUER);
+    {
+        let mut reward_vault = ts::take_shared<RewardVault>(&scenario);
+        let route_cap = ts::take_from_sender<RouteCapability>(&scenario);
+        
+        let revenue = coin::mint_for_testing<SUI>(30_000_000_000, ts::ctx(&mut scenario));
+        reward_vault.deposit_rewards(&route_cap, revenue, ts::ctx(&mut scenario));
+        
+        ts::return_shared(reward_vault);
+        transfer::public_transfer(route_cap, ISSUER);
+    };
+    
+    // Batch claim from kiosk
+    ts::next_tx(&mut scenario, BACKER1);
+    {
+        let listing = ts::take_shared<Listing>(&scenario);
+        let tide = ts::take_shared<Tide>(&scenario);
+        let mut reward_vault = ts::take_shared<RewardVault>(&scenario);
+        let mut kiosk = ts::take_shared<kiosk::Kiosk>(&scenario);
+        let kiosk_cap = ts::take_from_sender<kiosk::KioskOwnerCap>(&scenario);
+        
+        // Build pass IDs vector
+        let mut pass_ids = vector::empty<ID>();
+        pass_ids.push_back(pass_id1);
+        pass_ids.push_back(pass_id2);
+        
+        // Batch claim
+        let reward = kiosk_ext::claim_many_from_kiosk(
+            &listing,
+            &tide,
+            &mut reward_vault,
+            &mut kiosk,
+            &kiosk_cap,
+            pass_ids,
+            ts::ctx(&mut scenario),
+        );
+        
+        // Should get all 30 SUI
+        assert!(reward.value() >= 29_000_000_000);
+        
+        coin::burn_for_testing(reward);
+        
+        ts::return_shared(listing);
+        ts::return_shared(tide);
+        ts::return_shared(reward_vault);
+        ts::return_shared(kiosk);
+        transfer::public_transfer(kiosk_cap, BACKER1);
+    };
+    
+    ts::end(scenario);
+}
+
+// =============================================================================
+// Cancellation & Refund Tests
+// =============================================================================
+
+#[test]
+fun test_cancel_listing_and_refund() {
+    let mut scenario = ts::begin(ADMIN);
+    
+    setup_protocol(&mut scenario);
+    create_listing(&mut scenario);
+    activate_listing(&mut scenario);
+    
+    // Backer deposits 10 SUI
+    backer_deposit(&mut scenario, BACKER1, 10_000_000_000);
+    
+    // Cancel the listing (council action)
+    ts::next_tx(&mut scenario, ADMIN);
+    {
+        let mut listing = ts::take_shared<Listing>(&scenario);
+        let tide = ts::take_shared<Tide>(&scenario);
+        let council_cap = ts::take_from_sender<CouncilCap>(&scenario);
+        let capital_vault = ts::take_shared<CapitalVault>(&scenario);
+        let staking_adapter = ts::take_shared<staking_adapter::StakingAdapter>(&scenario);
+        
+        listing.cancel_listing(&tide, &council_cap, &capital_vault, &staking_adapter, ts::ctx(&mut scenario));
+        
+        // Verify state is cancelled
+        assert!(listing.state() == constants::state_cancelled!());
+        
+        ts::return_shared(listing);
+        ts::return_shared(tide);
+        ts::return_shared(capital_vault);
+        ts::return_shared(staking_adapter);
+        transfer::public_transfer(council_cap, ADMIN);
+    };
+    
+    // Backer claims refund
+    ts::next_tx(&mut scenario, BACKER1);
+    {
+        let listing = ts::take_shared<Listing>(&scenario);
+        let mut capital_vault = ts::take_shared<CapitalVault>(&scenario);
+        let pass = ts::take_from_sender<SupporterPass>(&scenario);
+        
+        let refund = listing.claim_refund(&mut capital_vault, pass, ts::ctx(&mut scenario));
+        
+        // Should get full 10 SUI back (minus any precision loss)
+        assert!(refund.value() >= 9_900_000_000);
+        
+        coin::burn_for_testing(refund);
+        ts::return_shared(listing);
+        ts::return_shared(capital_vault);
+    };
+    
+    ts::end(scenario);
+}
+
+#[test]
+fun test_cancel_listing_multi_backer_refunds() {
+    let mut scenario = ts::begin(ADMIN);
+    
+    setup_protocol(&mut scenario);
+    create_listing(&mut scenario);
+    activate_listing(&mut scenario);
+    
+    // Two backers deposit
+    backer_deposit(&mut scenario, BACKER1, 30_000_000_000); // 30 SUI (75%)
+    backer_deposit(&mut scenario, BACKER2, 10_000_000_000); // 10 SUI (25%)
+    
+    // Cancel the listing
+    ts::next_tx(&mut scenario, ADMIN);
+    {
+        let mut listing = ts::take_shared<Listing>(&scenario);
+        let tide = ts::take_shared<Tide>(&scenario);
+        let council_cap = ts::take_from_sender<CouncilCap>(&scenario);
+        let capital_vault = ts::take_shared<CapitalVault>(&scenario);
+        let staking_adapter = ts::take_shared<staking_adapter::StakingAdapter>(&scenario);
+        
+        listing.cancel_listing(&tide, &council_cap, &capital_vault, &staking_adapter, ts::ctx(&mut scenario));
+        
+        ts::return_shared(listing);
+        ts::return_shared(tide);
+        ts::return_shared(capital_vault);
+        ts::return_shared(staking_adapter);
+        transfer::public_transfer(council_cap, ADMIN);
+    };
+    
+    // Backer 1 claims refund (should get 75% of 40 SUI = 30 SUI)
+    ts::next_tx(&mut scenario, BACKER1);
+    {
+        let listing = ts::take_shared<Listing>(&scenario);
+        let mut capital_vault = ts::take_shared<CapitalVault>(&scenario);
+        let pass = ts::take_from_sender<SupporterPass>(&scenario);
+        
+        let refund = listing.claim_refund(&mut capital_vault, pass, ts::ctx(&mut scenario));
+        
+        // Should get ~30 SUI
+        assert!(refund.value() >= 29_000_000_000 && refund.value() <= 31_000_000_000);
+        
+        coin::burn_for_testing(refund);
+        ts::return_shared(listing);
+        ts::return_shared(capital_vault);
+    };
+    
+    // Backer 2 claims refund (should get 25% of 40 SUI = 10 SUI)
+    ts::next_tx(&mut scenario, BACKER2);
+    {
+        let listing = ts::take_shared<Listing>(&scenario);
+        let mut capital_vault = ts::take_shared<CapitalVault>(&scenario);
+        let pass = ts::take_from_sender<SupporterPass>(&scenario);
+        
+        let refund = listing.claim_refund(&mut capital_vault, pass, ts::ctx(&mut scenario));
+        
+        // Should get ~10 SUI
+        assert!(refund.value() >= 9_000_000_000 && refund.value() <= 11_000_000_000);
+        
+        coin::burn_for_testing(refund);
+        ts::return_shared(listing);
+        ts::return_shared(capital_vault);
+    };
+    
+    ts::end(scenario);
+}
+
+#[test]
+#[expected_failure(abort_code = 16, location = tide_core::listing)]
+fun test_cannot_cancel_finalized_listing() {
+    let mut scenario = ts::begin(ADMIN);
+    
+    setup_protocol(&mut scenario);
+    create_listing(&mut scenario);
+    activate_listing(&mut scenario);
+    backer_deposit(&mut scenario, BACKER1, 10_000_000_000);
+    
+    // Finalize the listing
+    ts::next_tx(&mut scenario, ADMIN);
+    {
+        let mut listing = ts::take_shared<Listing>(&scenario);
+        let council_cap = ts::take_from_sender<CouncilCap>(&scenario);
+        let mut capital_vault = ts::take_shared<CapitalVault>(&scenario);
+        let clock = clock::create_for_testing(ts::ctx(&mut scenario));
+        
+        listing.finalize(&council_cap, &mut capital_vault, &clock, ts::ctx(&mut scenario));
+        
+        clock::destroy_for_testing(clock);
+        ts::return_shared(listing);
+        ts::return_shared(capital_vault);
+        transfer::public_transfer(council_cap, ADMIN);
+    };
+    
+    // Try to cancel (should fail)
+    ts::next_tx(&mut scenario, ADMIN);
+    {
+        let mut listing = ts::take_shared<Listing>(&scenario);
+        let tide = ts::take_shared<Tide>(&scenario);
+        let council_cap = ts::take_from_sender<CouncilCap>(&scenario);
+        let capital_vault = ts::take_shared<CapitalVault>(&scenario);
+        let staking_adapter = ts::take_shared<staking_adapter::StakingAdapter>(&scenario);
+        
+        // This should fail - cannot cancel finalized listing
+        listing.cancel_listing(&tide, &council_cap, &capital_vault, &staking_adapter, ts::ctx(&mut scenario));
+        
+        ts::return_shared(listing);
+        ts::return_shared(tide);
+        ts::return_shared(capital_vault);
+        ts::return_shared(staking_adapter);
+        transfer::public_transfer(council_cap, ADMIN);
+    };
+    
+    ts::end(scenario);
+}
+
+#[test]
+#[expected_failure(abort_code = 15, location = tide_core::listing)]
+fun test_cannot_refund_non_cancelled_listing() {
+    let mut scenario = ts::begin(ADMIN);
+    
+    setup_protocol(&mut scenario);
+    create_listing(&mut scenario);
+    activate_listing(&mut scenario);
+    backer_deposit(&mut scenario, BACKER1, 10_000_000_000);
+    
+    // Try to claim refund without cancelling (should fail)
+    ts::next_tx(&mut scenario, BACKER1);
+    {
+        let listing = ts::take_shared<Listing>(&scenario);
+        let mut capital_vault = ts::take_shared<CapitalVault>(&scenario);
+        let pass = ts::take_from_sender<SupporterPass>(&scenario);
+        
+        // This should fail - listing not cancelled
+        let refund = listing.claim_refund(&mut capital_vault, pass, ts::ctx(&mut scenario));
+        
+        coin::burn_for_testing(refund);
+        ts::return_shared(listing);
+        ts::return_shared(capital_vault);
     };
     
     ts::end(scenario);

@@ -142,6 +142,24 @@ public fun assert_listing(self: &SupporterPass, listing_id: ID) {
     assert!(self.listing_id == listing_id, errors::wrong_listing());
 }
 
+// === Package Functions ===
+
+/// Burn a SupporterPass (for refunds on cancelled listings).
+/// Only callable from listing module.
+public(package) fun burn(pass: SupporterPass) {
+    let SupporterPass {
+        id,
+        listing_id: _,
+        pass_number: _,
+        original_backer: _,
+        shares: _,
+        claim_index: _,
+        total_claimed: _,
+        created_epoch: _,
+    } = pass;
+    id.delete();
+}
+
 // === Test Helpers ===
 
 #[test_only]

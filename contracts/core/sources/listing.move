@@ -904,6 +904,125 @@ public fun set_staking_validator(
     staking_adapter.set_validator(new_validator);
 }
 
+// === Cancellation & Refunds ===
+
+/// Cancel a listing and enable refunds for backers.
+/// 
+/// Requirements:
+/// - Council-gated (requires CouncilCap)
+/// - Listing must be in Draft or Active state
+/// - All staked capital must be unstaked first
+/// 
+/// After cancellation:
+/// - Listing enters Cancelled state
+/// - Backers can call claim_refund() to get their capital back
+/// - No further deposits, releases, or state changes allowed
+public fun cancel_listing(
+    self: &mut Listing,
+    tide: &Tide,
+    _council_cap: &CouncilCap,
+    capital_vault: &CapitalVault,
+    staking_adapter: &StakingAdapter,
+    ctx: &mut TxContext,
+) {
+    tide.assert_not_paused();
+    
+    // Can only cancel from Draft or Active states
+    assert!(
+        self.state == constants::state_draft!() ||
+        self.state == constants::state_active!(),
+        errors::cannot_cancel()
+    );
+    
+    // Cannot cancel if capital is staked
+    // Council must unstake first using unstake_all
+    assert!(
+        staking_adapter.staked_principal() == 0 && staking_adapter.pending_balance() == 0,
+        errors::staked_capital()
+    );
+    
+    let previous_state = self.state;
+    
+    // Transition to Cancelled
+    self.state = constants::state_cancelled!();
+    
+    events::emit_listing_cancelled(
+        self.id.to_inner(),
+        ctx.sender(),
+        previous_state,
+        capital_vault.refundable_balance(),
+        self.total_backers,
+        ctx.epoch(),
+    );
+}
+
+/// Claim refund for a cancelled listing.
+/// 
+/// Burns the SupporterPass and returns proportional capital.
+/// Refund = (pass.shares / total_shares) * vault_balance
+/// 
+/// Requirements:
+/// - Listing must be in Cancelled state
+/// - Pass must belong to this listing
+/// - Pass has not already been refunded
+public fun claim_refund(
+    self: &Listing,
+    capital_vault: &mut CapitalVault,
+    pass: SupporterPass,
+    ctx: &mut TxContext,
+): Coin<SUI> {
+    // Must be cancelled
+    assert!(self.state == constants::state_cancelled!(), errors::not_cancelled());
+    
+    // Pass must belong to this listing
+    pass.assert_listing(self.id.to_inner());
+    
+    let shares = pass.shares();
+    let pass_id = pass.id();
+    
+    // Calculate and withdraw refund
+    let refund = capital_vault.withdraw_refund(shares, ctx);
+    let refund_amount = refund.value();
+    
+    events::emit_refund_claimed(
+        self.id.to_inner(),
+        pass_id,
+        ctx.sender(),
+        refund_amount,
+        shares,
+        capital_vault.refundable_balance(),
+        ctx.epoch(),
+    );
+    
+    // Burn the pass (consumed)
+    pass.burn();
+    
+    refund
+}
+
+/// Batch claim refunds for multiple passes.
+/// Convenience function for users with multiple passes.
+public fun claim_refunds(
+    self: &Listing,
+    capital_vault: &mut CapitalVault,
+    mut passes: vector<SupporterPass>,
+    ctx: &mut TxContext,
+): Coin<SUI> {
+    let mut total = coin::zero<SUI>(ctx);
+    let len = passes.length();
+    let mut i = 0;
+    
+    while (i < len) {
+        let pass = passes.pop_back();
+        let refund = self.claim_refund(capital_vault, pass, ctx);
+        total.join(refund);
+        i = i + 1;
+    };
+    
+    passes.destroy_empty();
+    total
+}
+
 // === View Functions ===
 
 /// Get listing ID.

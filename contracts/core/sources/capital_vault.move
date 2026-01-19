@@ -547,6 +547,53 @@ public fun min_deposit(self: &CapitalVault): u64 {
     self.min_deposit
 }
 
+// === Refund Functions ===
+
+/// Calculate refund amount for a given number of shares.
+/// Refund is proportional: (shares / total_shares) * current_balance
+/// 
+/// This ensures fair distribution when:
+/// - Some capital may have been released (Finalized state partial cancel)
+/// - Staking returns may have occurred
+public fun calculate_refund(self: &CapitalVault, shares: u128): u64 {
+    if (self.total_shares == 0) {
+        return 0
+    };
+    
+    let balance = self.balance.value();
+    if (balance == 0) {
+        return 0
+    };
+    
+    // refund = shares * balance / total_shares
+    // Use u128 to prevent overflow
+    let refund = ((shares as u128) * (balance as u128)) / self.total_shares;
+    (refund as u64)
+}
+
+/// Withdraw refund for a cancelled listing.
+/// Only callable from listing module when listing is cancelled.
+public(package) fun withdraw_refund(
+    self: &mut CapitalVault,
+    shares: u128,
+    ctx: &mut TxContext,
+): Coin<SUI> {
+    let refund_amount = self.calculate_refund(shares);
+    assert!(refund_amount > 0, errors::invalid_amount());
+    assert!(self.balance.value() >= refund_amount, errors::insufficient_balance());
+    
+    // Reduce total shares
+    self.total_shares = self.total_shares - shares;
+    
+    // Withdraw refund
+    coin::from_balance(self.balance.split(refund_amount), ctx)
+}
+
+/// Get current refundable balance (for display purposes).
+public fun refundable_balance(self: &CapitalVault): u64 {
+    self.balance.value()
+}
+
 // === Share Function ===
 
 /// Share the capital vault object.

@@ -49,6 +49,18 @@ const EAllTranchesReleased: vector<u8> = b"All tranches already released";
 #[error]
 const EBelowMinimum: vector<u8> = b"Deposit amount below minimum (1 SUI)";
 
+#[error]
+const ENotCancelled: vector<u8> = b"Listing is not in Cancelled state";
+
+#[error]
+const ECannotCancel: vector<u8> = b"Listing cannot be cancelled in this state";
+
+#[error]
+const EStakedCapital: vector<u8> = b"Cannot cancel while capital is staked - unstake first";
+
+#[error]
+const EAlreadyRefunded: vector<u8> = b"Pass has already been refunded";
+
 // === Public Functions (for cross-package use) ===
 
 public fun not_active(): u64 { 0 }
@@ -66,6 +78,10 @@ public fun not_draft(): u64 { 11 }
 public fun version_mismatch(): u64 { 12 }
 public fun all_tranches_released(): u64 { 13 }
 public fun below_minimum(): u64 { 14 }
+public fun not_cancelled(): u64 { 15 }
+public fun cannot_cancel(): u64 { 16 }
+public fun staked_capital(): u64 { 17 }
+public fun already_refunded(): u64 { 18 }
 
 // === Test Constants (for expected_failure attributes) ===
 
@@ -99,4 +115,11 @@ const EVERSION_MISMATCH: u64 = 12;
 const EALL_TRANCHES_RELEASED: u64 = 13;
 #[test_only]
 const EBELOW_MINIMUM: u64 = 14;
-
+#[test_only]
+const ENOT_CANCELLED: u64 = 15;
+#[test_only]
+const ECANNOT_CANCEL: u64 = 16;
+#[test_only]
+const ESTAKED_CAPITAL: u64 = 17;
+#[test_only]
+const EALREADY_REFUNDED: u64 = 18;

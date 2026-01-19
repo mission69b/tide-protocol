@@ -160,6 +160,40 @@ public fun claim_many(
 - Individual `Claimed` events still emitted for each pass (for indexing)
 - Summary `BatchClaimed` event emitted with totals
 
+### Kiosk Support (Claim While Listed on Marketplace)
+
+SupporterPass holders can claim rewards even when their pass is listed on a Kiosk-based NFT marketplace (BlueMove, Clutchy, etc.):
+
+```move
+/// Claim from a pass in your Kiosk
+public fun claim_from_kiosk(
+    listing: &Listing,
+    tide: &Tide,
+    reward_vault: &mut RewardVault,
+    kiosk: &mut Kiosk,
+    kiosk_cap: &KioskOwnerCap,
+    pass_id: ID,
+    ctx: &mut TxContext,
+): Coin<SUI>
+
+/// Batch claim from multiple passes in your Kiosk
+public fun claim_many_from_kiosk(
+    listing: &Listing,
+    tide: &Tide,
+    reward_vault: &mut RewardVault,
+    kiosk: &mut Kiosk,
+    kiosk_cap: &KioskOwnerCap,
+    pass_ids: vector<ID>,
+    ctx: &mut TxContext,
+): Coin<SUI>
+```
+
+**How it works:**
+1. Pass stays in Kiosk (listing not affected)
+2. Owner uses their KioskOwnerCap to claim
+3. Rewards withdrawn, pass returns to Kiosk
+4. All in a single transaction
+
 ### Why This is Transfer-Safe
 
 When a SupporterPass is transferred:
@@ -291,7 +325,55 @@ Where:
      │ Config editable              │ Deposits accepted            │ No new deposits               │ Terminal
      │ No deposits                  │ Releases scheduled           │ Releases continue             │ All released
      │                              │                              │ Revenue routing               │ Claims only
+     │                              │
+     │      cancel_listing()        │      cancel_listing()
+     └─────────────┬────────────────┘
+                   ▼
+            ┌───────────┐
+            │ Cancelled │
+            └───────────┘
+                   │
+                   │ Refunds enabled
+                   │ Pass burned on claim
 ```
+
+## Emergency Cancellation & Refunds
+
+If a listing needs to be cancelled (raise failed, issuer backed out, etc.), the council can cancel and backers can claim refunds:
+
+### Cancel Listing (Council-gated)
+
+```move
+public fun cancel_listing(
+    listing: &mut Listing,
+    tide: &Tide,
+    council_cap: &CouncilCap,
+    capital_vault: &CapitalVault,
+    staking_adapter: &StakingAdapter,
+    ctx: &mut TxContext,
+)
+```
+
+**Requirements:**
+- Listing must be in Draft or Active state
+- All staked capital must be unstaked first (call `unstake_all()` before cancelling)
+- Council-gated (requires CouncilCap)
+
+### Claim Refund (Permissionless)
+
+```move
+public fun claim_refund(
+    listing: &Listing,
+    capital_vault: &mut CapitalVault,
+    pass: SupporterPass,  // Consumed - pass is burned
+    ctx: &mut TxContext,
+): Coin<SUI>
+```
+
+**How it works:**
+- Refund is proportional: `(pass.shares / total_shares) * vault_balance`
+- Pass is burned on refund (prevents double-claim)
+- Fair distribution even if some capital was staked/released
 
 ## Fees & Treasury (v1)
 
@@ -376,6 +458,7 @@ tide-protocol/
 │   │   │   ├── reward_vault.move      # Reward distribution
 │   │   │   ├── staking_adapter.move   # Native Sui staking
 │   │   │   ├── supporter_pass.move    # Backer NFT position (economics only)
+│   │   │   ├── kiosk_ext.move         # Kiosk extension (claim while listed)
 │   │   │   ├── display.move           # Display metadata (sui::display)
 │   │   │   ├── math.move              # Fixed-point arithmetic
 │   │   │   ├── admin.move             # Capability-gated admin
