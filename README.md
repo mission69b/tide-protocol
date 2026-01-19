@@ -431,8 +431,8 @@ Tide v1 is intentionally minimal with a **registry-first architecture**:
 | Min Deposit | 1 SUI per backer |
 | Assets | SUI only |
 | Staking | Native Sui staking (fully implemented) |
-| Marketplace | None |
-| Refunds | None |
+| Marketplace | Native SupporterPass marketplace (5% seller fee) |
+| Refunds | Cancellation + proportional refund claims |
 
 **Council MAY:** Create listings, activate/finalize, pause/resume
 
@@ -468,15 +468,23 @@ tide-protocol/
 │   │   └── tests/
 │   │       └── *.move
 │   │
-│   └── adapters/
-│       └── faith_router/        # FAITH revenue adapter
-│           ├── Move.toml
-│           ├── sources/
-│           │   └── faith_router.move
-│           └── tests/
+│   ├── adapters/
+│   │   └── faith_router/        # FAITH revenue adapter
+│   │       ├── Move.toml
+│   │       ├── sources/
+│   │       │   └── faith_router.move
+│   │       └── tests/
+│   │
+│   └── marketplace/             # Tide Marketplace
+│       ├── Move.toml
+│       ├── sources/
+│       │   └── marketplace.move
+│       └── tests/
 │
 ├── spec/
 │   ├── tide-core-v1.md          # Locked specification
+│   ├── marketplace-v1.md        # Marketplace specification
+│   ├── self-paying-loans-v2.md  # Self-paying loans design (v2)
 │   └── invariants.md            # Audit-ready invariant list
 │
 ├── scripts/
@@ -502,6 +510,11 @@ sui move test
 # Build adapter
 cd ../adapters/faith_router
 sui move build
+
+# Build marketplace
+cd ../../marketplace
+sui move build
+sui move test
 ```
 
 ## Deployment
@@ -511,6 +524,14 @@ See [DEPLOYMENT.md](./DEPLOYMENT.md) for:
 - Wallet and multisig setup
 - Step-by-step deployment guide
 - Emergency procedures
+
+## Marketplace
+
+See [MARKETPLACE.md](./MARKETPLACE.md) for:
+- Native SupporterPass trading
+- 5% seller fee structure
+- List/buy/delist operations
+- Integration with TreasuryVault
 
 ## Protocol Integrations
 

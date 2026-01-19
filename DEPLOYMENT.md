@@ -224,9 +224,70 @@ sui client publish --gas-budget 200000000
 
 ---
 
-## Step 5: Initialize FAITH Listing (Listing #1)
+## Step 5: Deploy tide_marketplace Package
 
-### 5.1 Create the Listing
+> **Note:** For detailed marketplace documentation, see [MARKETPLACE.md](./MARKETPLACE.md).
+
+### 5.1 Update Dependency
+
+Edit `contracts/marketplace/Move.toml`:
+
+```toml
+[dependencies]
+tide_core = { local = "../core" }
+
+# For published deployment, use:
+# [dependencies.tide_core]
+# git = "https://github.com/your-org/tide-protocol.git"
+# subdir = "contracts/core"
+# rev = "v1.0.0"
+```
+
+### 5.2 Publish Marketplace
+
+```bash
+cd contracts/marketplace
+sui client publish --gas-budget 200000000
+```
+
+**Expected output:**
+```
+╭─────────────────────────────────────────────────────────────────────────────╮
+│ Object Changes                                                               │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ Created Objects:                                                             │
+│  ┌──                                                                        │
+│  │ ObjectID: 0x<MARKETPLACE_CONFIG_ID>                                       │
+│  │ ObjectType: tide_marketplace::marketplace::MarketplaceConfig              │
+│  └──                                                                        │
+│  ┌──                                                                        │
+│  │ ObjectID: 0x<UPGRADE_CAP_ID>                                              │
+│  │ ObjectType: sui::package::UpgradeCap                                      │
+│  └──                                                                        │
+│ Published Objects:                                                           │
+│  ┌──                                                                        │
+│  │ ObjectID: 0x<MARKETPLACE_PACKAGE_ID>                                      │
+│  │ ObjectType: sui::package::Package                                         │
+│  └──                                                                        │
+╰─────────────────────────────────────────────────────────────────────────────╯
+```
+
+Record:
+- `MARKETPLACE_PACKAGE_ID`
+- `MARKETPLACE_CONFIG_ID`
+- `MARKETPLACE_UPGRADE_CAP_ID`
+
+### 5.3 Update Move.toml with Published Address
+
+```toml
+published-at = "0x<MARKETPLACE_PACKAGE_ID>"
+```
+
+---
+
+## Step 6: Initialize FAITH Listing (Listing #1)
+
+### 6.1 Create the Listing
 
 ```bash
 # Using Sui CLI with PTB (Programmable Transaction Block)
@@ -244,7 +305,7 @@ sui client ptb \
 
 Or use a TypeScript deployment script (see below).
 
-### 5.2 Activate the Listing
+### 6.2 Activate the Listing
 
 ```bash
 sui client ptb \
@@ -259,9 +320,9 @@ Note: `@0x6` is the Sui Clock object.
 
 ---
 
-## Step 6: Transfer Capabilities (Production)
+## Step 7: Transfer Capabilities (Production)
 
-### 6.1 Transfer CouncilCap to Multisig
+### 7.1 Transfer CouncilCap to Multisig
 
 ```bash
 sui client transfer \
@@ -270,7 +331,7 @@ sui client transfer \
   --gas-budget 10000000
 ```
 
-### 6.2 Transfer AdminCap (Optional)
+### 7.2 Transfer AdminCap (Optional)
 
 For production, consider transferring AdminCap to a secure cold wallet or multisig:
 
@@ -283,9 +344,9 @@ sui client transfer \
 
 ---
 
-## Step 7: Verification
+## Step 8: Verification
 
-### 7.1 Verify Deployment
+### 8.1 Verify Deployment
 
 ```bash
 # Check Tide object
@@ -298,7 +359,7 @@ sui client object 0xREGISTRY_ID
 sui client object 0xLISTING_ID
 ```
 
-### 7.2 Verify on Explorer
+### 8.2 Verify on Explorer
 
 - **Testnet:** https://suiscan.xyz/testnet/object/0xPACKAGE_ID
 - **Mainnet:** https://suiscan.xyz/mainnet/object/0xPACKAGE_ID
