@@ -786,9 +786,9 @@ public struct ListingConfig has copy, drop, store {
 
 ### Adapter + Testing (Week 4)
 - [x] 9.1 faith_router.move
-- [x] 10.1 e2e_tests.move (6 tests)
-- [ ] Security review
-- [ ] Documentation review
+- [x] 10.1 e2e_tests.move (6 tests → now 99 tests in core)
+- [x] Security review (access control verified)
+- [x] Documentation review (README, MARKETPLACE.md, LOANS.md updated)
 
 ### Test Summary
 - **Total Tests:** 97 (85 core + 12 adapter)
@@ -831,6 +831,32 @@ public struct ListingConfig has copy, drop, store {
 
 ---
 
+## v1+ Additions (Beyond Original Spec)
+
+The following features have been added to expand the v1 foundation:
+
+### Marketplace Package (`contracts/marketplace/`) ✅
+- Native SupporterPass trading
+- 5% seller fee → TreasuryVault
+- 23 tests (20 unit + 3 E2E)
+- See: `spec/marketplace-v1.md`
+
+### Self-Paying Loans Package (`contracts/loans/`) ✅
+- Borrow against SupporterPass collateral
+- Auto-repay from rewards via keeper harvest
+- Conservative 50% LTV, 5% interest
+- 21 tests (14 unit + 7 E2E)
+- See: `spec/self-paying-loans-v2.md`
+
+### Core Enhancements ✅
+- SupporterPass provenance fields (`pass_number`, `original_backer`, `total_claimed`)
+- `claim_many` batch claiming
+- Kiosk claiming support (`kiosk_ext.move`)
+- Refund mechanism (Cancelled state)
+- TreasuryVault for protocol fees
+
+---
+
 ## Notes
 
 1. **Registry-first:** All listings go through ListingRegistry
@@ -839,3 +865,15 @@ public struct ListingConfig has copy, drop, store {
 4. **Config hash:** Immutable config verified via hash
 5. **v1 Constraint:** Only FAITH (Listing #1) surfaced in product
 6. **Naming:** Use Tide terminology throughout (never "Category" or "FEF")
+
+---
+
+## Total Test Coverage
+
+| Package | Tests |
+|---------|-------|
+| Core | 99 |
+| Faith Router | 17 |
+| Marketplace | 23 |
+| Loans | 21 |
+| **Total** | **160** |

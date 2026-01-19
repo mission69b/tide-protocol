@@ -1,7 +1,7 @@
 # Self-Paying Loans Specification
 
-> **Version:** v2.0 Draft
-> **Status:** Design
+> **Version:** v2.0
+> **Status:** ✅ IMPLEMENTED (Phase 1 MVP Complete)
 > **Author:** Tide Protocol
 > **Last Updated:** January 2026
 
@@ -695,34 +695,38 @@ public fun withdraw_insurance(
 
 ## 9. Implementation Phases
 
-### Phase 1: MVP (v2.0)
+### Phase 1: MVP (v2.0) ✅ COMPLETE
 
 **Scope:**
-- LoanVault with treasury liquidity
-- Basic borrow/repay/liquidate
-- Manual harvest_and_repay (keeper calls)
-- Simple collateral valuation (original deposit)
-- Conservative parameters (50% LTV, 5% interest)
+- [x] LoanVault with treasury liquidity
+- [x] Basic borrow/repay/liquidate
+- [x] Manual harvest_and_repay (keeper calls)
+- [x] Simple collateral valuation (original deposit)
+- [x] Conservative parameters (50% LTV, 5% interest)
+- [x] Versioning (VERSION constant)
+- [x] Admin functions (pause, config updates, liquidity management)
+- [x] Unit tests (14 tests)
+- [x] E2E tests (7 tests)
 
-**Timeline:** 2-3 weeks
+**Timeline:** ✅ Completed
 
 ### Phase 2: Enhanced (v2.1)
 
 **Scope:**
-- Auto-harvest integration with existing adapters
-- Multiple listing support
-- Improved liquidation UX
-- Analytics dashboard
+- [ ] Auto-harvest integration with existing adapters
+- [ ] Multiple listing support
+- [ ] Improved liquidation UX
+- [ ] Analytics dashboard
 
 **Timeline:** 2 weeks
 
 ### Phase 3: Pool-Based Lending (v3.0)
 
 **Scope:**
-- External lender deposits
-- LenderPosition NFT
-- Dynamic interest rates (utilization-based)
-- Lender yield distribution
+- [ ] External lender deposits
+- [ ] LenderPosition NFT
+- [ ] Dynamic interest rates (utilization-based)
+- [ ] Lender yield distribution
 
 **Timeline:** 4-6 weeks
 
