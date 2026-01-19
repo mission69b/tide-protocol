@@ -357,15 +357,31 @@ public fun cancel_listing(
 **Requirements:**
 - Listing must be in Draft or Active state
 - All staked capital must be unstaked first (call `unstake_all()` before cancelling)
+- Function will abort with `EStakedCapital` if staking_adapter has pending balance
 - Council-gated (requires CouncilCap)
+
+**Process:**
+1. Council calls `unstake_all()` to initiate unstaking (may require epoch wait)
+2. Wait for pending balance to clear (Sui epoch boundary)
+3. Call `cancel_listing()` to transition to Cancelled state
+4. Backers can now call `claim_refund()` or `claim_refunds()`
 
 ### Claim Refund (Permissionless)
 
 ```move
+/// Single refund claim
 public fun claim_refund(
     listing: &Listing,
     capital_vault: &mut CapitalVault,
     pass: SupporterPass,  // Consumed - pass is burned
+    ctx: &mut TxContext,
+): Coin<SUI>
+
+/// Batch refund claim (multiple passes)
+public fun claim_refunds(
+    listing: &Listing,
+    capital_vault: &mut CapitalVault,
+    passes: vector<SupporterPass>,  // All consumed
     ctx: &mut TxContext,
 ): Coin<SUI>
 ```
@@ -373,7 +389,8 @@ public fun claim_refund(
 **How it works:**
 - Refund is proportional: `(pass.shares / total_shares) * vault_balance`
 - Pass is burned on refund (prevents double-claim)
-- Fair distribution even if some capital was staked/released
+- Fair distribution even if some capital was released
+- Batch function for users with multiple passes (single transaction)
 
 ## Fees & Treasury (v1)
 
