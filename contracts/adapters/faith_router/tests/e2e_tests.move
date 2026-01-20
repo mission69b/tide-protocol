@@ -76,7 +76,8 @@ fun create_listing_with_faith_router(scenario: &mut Scenario) {
             listing::new(
                 &mut registry,
                 &council_cap,
-                ISSUER,
+                ADMIN,      // issuer = protocol operator
+                ISSUER,     // release_recipient = artist
                 VALIDATOR,
                 vector::empty(),
                 vector::empty(),
@@ -92,7 +93,7 @@ fun create_listing_with_faith_router(scenario: &mut Scenario) {
         reward_vault::share(reward_vault);
         staking_adapter::share(staking_adapter);
         
-        listing::transfer_cap(listing_cap, ISSUER);
+        listing::transfer_cap(listing_cap, ADMIN);
         
         // Transfer route_cap to FAITH_ADMIN for router creation
         reward_vault::transfer_route_cap(route_cap, FAITH_ADMIN);
@@ -447,7 +448,8 @@ fun test_e2e_zero_bps_issuer_keeps_all() {
             listing::new(
                 &mut registry,
                 &council_cap,
-                ISSUER,
+                ADMIN,      // issuer = protocol operator
+                ISSUER,     // release_recipient = artist
                 VALIDATOR,
                 vector::empty(),
                 vector::empty(),
@@ -462,7 +464,7 @@ fun test_e2e_zero_bps_issuer_keeps_all() {
         capital_vault::share(capital_vault);
         reward_vault::share(reward_vault);
         staking_adapter::share(staking_adapter);
-        listing::transfer_cap(listing_cap, ISSUER);
+        listing::transfer_cap(listing_cap, ADMIN);
         
         // Create router with 0% bps
         let (router, router_cap) = faith_router::new(

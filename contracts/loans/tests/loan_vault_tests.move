@@ -76,7 +76,8 @@ fun create_listing(scenario: &mut Scenario) {
             listing::new(
                 &mut registry,
                 &council_cap,
-                ISSUER,
+                ADMIN,      // issuer = protocol operator
+                ISSUER,     // release_recipient = artist
                 VALIDATOR,
                 vector::empty(), // Deferred schedule
                 vector::empty(),
@@ -93,9 +94,9 @@ fun create_listing(scenario: &mut Scenario) {
         reward_vault::share(reward_vault);
         staking_adapter::share(staking_adapter);
         
-        // Transfer caps to issuer
-        listing::transfer_cap(listing_cap, ISSUER);
-        reward_vault::transfer_route_cap(route_cap, ISSUER);
+        // Transfer caps to admin (protocol operator)
+        listing::transfer_cap(listing_cap, ADMIN);
+        reward_vault::transfer_route_cap(route_cap, ADMIN);
     };
 }
 

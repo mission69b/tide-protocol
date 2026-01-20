@@ -45,8 +45,10 @@ public struct ListingCap has key, store {
 /// Used to compute the config hash.
 /// All fee and limit parameters are disclosed here for transparency.
 public struct ListingConfig has copy, drop, store {
-    /// Issuer address.
+    /// Issuer address (manages listing infrastructure).
     issuer: address,
+    /// Release recipient address (receives capital tranches).
+    release_recipient: address,
     /// Validator for staking.
     validator: address,
     /// Tranche amounts (SUI, in MIST).
@@ -70,8 +72,10 @@ public struct Listing has key {
     id: UID,
     /// Listing number in registry (1-indexed).
     listing_number: u64,
-    /// Issuer address receiving released capital.
+    /// Issuer address (manages listing, receives RouteCapability/ListingCap).
     issuer: address,
+    /// Release recipient address (receives capital tranches from vault).
+    release_recipient: address,
     /// Current lifecycle state.
     state: u8,
     /// Hash of immutable config (computed at creation, verified at activation).
@@ -92,10 +96,16 @@ public struct Listing has key {
 
 /// Create a new listing in Draft state (council-gated).
 /// Returns Listing, CapitalVault, RewardVault, StakingAdapter, ListingCap, RouteCapability.
+/// 
+/// Parameters:
+/// - issuer: Address that manages the listing (receives RouteCapability, ListingCap)
+/// - release_recipient: Address that receives capital tranches (the artist/creator)
+/// - validator: Validator address for staking
 public fun new(
     registry: &mut ListingRegistry,
     council_cap: &CouncilCap,
     issuer: address,
+    release_recipient: address,
     validator: address,
     tranche_amounts: vector<u64>,
     tranche_times: vector<u64>,
@@ -105,6 +115,7 @@ public fun new(
     // Create config with fee and limit disclosure
     let config = ListingConfig {
         issuer,
+        release_recipient,
         validator,
         tranche_amounts: tranche_amounts,
         tranche_times: tranche_times,
@@ -126,6 +137,7 @@ public fun new(
         id: listing_uid,
         listing_number,
         issuer,
+        release_recipient,
         state: constants::state_draft!(),
         config_hash,
         config,
@@ -137,7 +149,7 @@ public fun new(
     
     let capital_vault = capital_vault::new(
         listing_id,
-        issuer,
+        release_recipient, // Capital goes to release_recipient
         tranche_amounts,
         tranche_times,
         ctx,
@@ -159,6 +171,7 @@ public fun new(
         listing_id,
         listing_number,
         issuer,
+        release_recipient,
         config_hash,
         constants::min_deposit!(),
         constants::raise_fee_bps!(),
@@ -509,8 +522,8 @@ public fun release_tranche_at(
     
     let (amount, coin) = capital_vault.release_tranche_at(tranche_idx, clock, ctx);
     
-    // Transfer directly to issuer
-    transfer::public_transfer(coin, self.issuer);
+    // Transfer to release_recipient (the artist/creator)
+    transfer::public_transfer(coin, self.release_recipient);
     
     let total_tranches = capital_vault.num_tranches();
     let remaining = total_tranches - capital_vault.tranches_released();
@@ -519,7 +532,7 @@ public fun release_tranche_at(
         self.id.to_inner(),
         tranche_idx,
         amount,
-        self.issuer,
+        self.release_recipient,
         total_tranches,
         remaining,
         capital_vault.cumulative_released(),
@@ -542,8 +555,8 @@ public fun release_next_ready_tranche(
     
     let (tranche_idx, amount, coin) = capital_vault.release_next_ready_tranche(clock, ctx);
     
-    // Transfer directly to issuer
-    transfer::public_transfer(coin, self.issuer);
+    // Transfer to release_recipient (the artist/creator)
+    transfer::public_transfer(coin, self.release_recipient);
     
     let total_tranches = capital_vault.num_tranches();
     let remaining = total_tranches - capital_vault.tranches_released();
@@ -552,7 +565,7 @@ public fun release_next_ready_tranche(
         self.id.to_inner(),
         tranche_idx,
         amount,
-        self.issuer,
+        self.release_recipient,
         total_tranches,
         remaining,
         capital_vault.cumulative_released(),
@@ -575,8 +588,8 @@ public fun release_all_ready_tranches(
     
     let (indices, total_amount, coin) = capital_vault.release_all_ready_tranches(clock, ctx);
     
-    // Transfer combined amount directly to issuer
-    transfer::public_transfer(coin, self.issuer);
+    // Transfer combined amount to release_recipient (the artist/creator)
+    transfer::public_transfer(coin, self.release_recipient);
     
     let total_tranches = capital_vault.num_tranches();
     let remaining = total_tranches - capital_vault.tranches_released();
@@ -592,7 +605,7 @@ public fun release_all_ready_tranches(
             self.id.to_inner(),
             idx,
             tranche_amount,
-            self.issuer,
+            self.release_recipient,
             total_tranches,
             remaining,
             cumulative,
@@ -1040,6 +1053,11 @@ public fun issuer(self: &Listing): address {
     self.issuer
 }
 
+/// Get release recipient address (receives capital tranches).
+public fun release_recipient(self: &Listing): address {
+    self.release_recipient
+}
+
 /// Get current state.
 public fun state(self: &Listing): u8 {
     self.state
@@ -1089,6 +1107,10 @@ public fun cap_listing_id(cap: &ListingCap): ID {
 
 public fun config_issuer(config: &ListingConfig): address {
     config.issuer
+}
+
+public fun config_release_recipient(config: &ListingConfig): address {
+    config.release_recipient
 }
 
 public fun config_validator(config: &ListingConfig): address {
@@ -1157,7 +1179,22 @@ public fun new_for_testing(
     tranche_times: vector<u64>,
     ctx: &mut TxContext,
 ): (Listing, CapitalVault, RewardVault, StakingAdapter, ListingCap, RouteCapability) {
-    new(registry, council_cap, issuer, validator, tranche_amounts, tranche_times, 1000, ctx)
+    // For testing, issuer and release_recipient are the same
+    new(registry, council_cap, issuer, issuer, validator, tranche_amounts, tranche_times, 1000, ctx)
+}
+
+#[test_only]
+public fun new_with_recipient_for_testing(
+    registry: &mut ListingRegistry,
+    council_cap: &CouncilCap,
+    issuer: address,
+    release_recipient: address,
+    validator: address,
+    tranche_amounts: vector<u64>,
+    tranche_times: vector<u64>,
+    ctx: &mut TxContext,
+): (Listing, CapitalVault, RewardVault, StakingAdapter, ListingCap, RouteCapability) {
+    new(registry, council_cap, issuer, release_recipient, validator, tranche_amounts, tranche_times, 1000, ctx)
 }
 
 #[test_only]

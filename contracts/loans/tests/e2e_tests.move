@@ -79,7 +79,8 @@ fun create_listing(scenario: &mut Scenario) {
             listing::new(
                 &mut registry,
                 &council_cap,
-                ISSUER,
+                ADMIN,      // issuer = protocol operator
+                ISSUER,     // release_recipient = artist
                 VALIDATOR,
                 vector::empty(),
                 vector::empty(),
@@ -95,8 +96,8 @@ fun create_listing(scenario: &mut Scenario) {
         reward_vault::share(reward_vault);
         staking_adapter::share(staking_adapter);
         
-        listing::transfer_cap(listing_cap, ISSUER);
-        reward_vault::transfer_route_cap(route_cap, ISSUER);
+        listing::transfer_cap(listing_cap, ADMIN);
+        reward_vault::transfer_route_cap(route_cap, ADMIN);
     };
 }
 
@@ -160,7 +161,7 @@ fun add_liquidity_to_vault(scenario: &mut Scenario, amount: u64) {
 }
 
 fun route_rewards(scenario: &mut Scenario, amount: u64) {
-    ts::next_tx(scenario, ISSUER);
+    ts::next_tx(scenario, ADMIN);
     {
         let mut reward_vault = ts::take_shared<RewardVault>(scenario);
         let route_cap = ts::take_from_sender<RouteCapability>(scenario);

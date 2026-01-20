@@ -17,7 +17,10 @@ use sui::event::emit;
 public struct ListingCreated has copy, drop {
     listing_id: ID,
     listing_number: u64,
+    /// Address that manages the listing (receives RouteCapability, ListingCap)
     issuer: address,
+    /// Address that receives capital tranches (the artist/creator)
+    release_recipient: address,
     config_hash: vector<u8>,
     min_deposit: u64,
     raise_fee_bps: u64,
@@ -28,6 +31,7 @@ public fun emit_listing_created(
     listing_id: ID,
     listing_number: u64,
     issuer: address,
+    release_recipient: address,
     config_hash: vector<u8>,
     min_deposit: u64,
     raise_fee_bps: u64,
@@ -37,6 +41,7 @@ public fun emit_listing_created(
         listing_id, 
         listing_number, 
         issuer, 
+        release_recipient,
         config_hash, 
         min_deposit,
         raise_fee_bps,

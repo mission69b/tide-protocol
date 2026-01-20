@@ -19,9 +19,12 @@ Tide enables projects to raise capital **after product-market fit** without sell
 ### Actors
 
 - **Backers** — Contribute SUI, receive a transferable economic position (SupporterPass), claim rewards
-- **Issuer** — Receives released capital on schedule, routes protocol revenue on-chain
+- **Issuer (Protocol Operator)** — Manages listing infrastructure, holds RouteCapability/ListingCap, routes protocol revenue
+- **Release Recipient (Artist/Creator)** — Receives released capital on schedule from the CapitalVault
 - **Listing Council** — 3-5 key multisig that gates listing creation, activation, and pause
 - **TreasuryVault** — On-chain vault collecting protocol fees (1% raise fee + 20% of staking rewards), admin-gated withdrawals
+
+> **Note:** The `issuer` and `release_recipient` are separate addresses. This allows the protocol operator (Tide) to manage adapter deployment and revenue routing while the artist receives their capital tranches directly.
 
 ### Key Objects
 

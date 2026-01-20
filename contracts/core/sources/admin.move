@@ -88,10 +88,15 @@ public fun update_council_config(
 /// 
 /// This is the canonical way to create listings in the registry-first architecture.
 /// Returns all objects for the caller to share/transfer appropriately.
+/// 
+/// Parameters:
+/// - issuer: Address that manages the listing (receives RouteCapability, ListingCap)
+/// - release_recipient: Address that receives capital tranches (the artist/creator)
 public fun create_listing(
     registry: &mut ListingRegistry,
     council_cap: &CouncilCap,
     issuer: address,
+    release_recipient: address,
     validator: address,
     tranche_amounts: vector<u64>,
     tranche_times: vector<u64>,
@@ -102,6 +107,7 @@ public fun create_listing(
         registry,
         council_cap,
         issuer,
+        release_recipient,
         validator,
         tranche_amounts,
         tranche_times,

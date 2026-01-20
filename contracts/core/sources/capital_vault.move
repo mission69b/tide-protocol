@@ -53,8 +53,8 @@ public struct CapitalVault has key {
     total_principal: u64,
     /// Total shares minted.
     total_shares: u128,
-    /// Issuer address who receives released capital.
-    issuer: address,
+    /// Release recipient address who receives released capital (the artist/creator).
+    release_recipient: address,
     /// Release tranches (computed at finalization).
     tranches: vector<Tranche>,
     /// Number of tranches released so far.
@@ -76,7 +76,7 @@ public struct CapitalVault has key {
 /// Create a new CapitalVault for a listing.
 public(package) fun new(
     listing_id: ID,
-    issuer: address,
+    release_recipient: address,
     tranche_amounts: vector<u64>,
     tranche_times: vector<u64>,
     ctx: &mut TxContext,
@@ -100,7 +100,7 @@ public(package) fun new(
         balance: balance::zero(),
         total_principal: 0,
         total_shares: 0,
-        issuer,
+        release_recipient,
         tranches,
         tranches_released: 0,
         raise_fee_bps: constants::raise_fee_bps!(),
@@ -115,7 +115,7 @@ public(package) fun new(
 /// This is the canonical v1 approach - schedule computed based on actual raised amount.
 public(package) fun new_with_deferred_schedule(
     listing_id: ID,
-    issuer: address,
+    release_recipient: address,
     ctx: &mut TxContext,
 ): CapitalVault {
     CapitalVault {
@@ -124,7 +124,7 @@ public(package) fun new_with_deferred_schedule(
         balance: balance::zero(),
         total_principal: 0,
         total_shares: 0,
-        issuer,
+        release_recipient,
         tranches: vector::empty(),
         tranches_released: 0,
         raise_fee_bps: constants::raise_fee_bps!(),
@@ -428,9 +428,9 @@ public fun total_shares(self: &CapitalVault): u128 {
     self.total_shares
 }
 
-/// Get issuer address.
-public fun issuer(self: &CapitalVault): address {
-    self.issuer
+/// Get release recipient address (who receives capital).
+public fun release_recipient(self: &CapitalVault): address {
+    self.release_recipient
 }
 
 /// Get number of tranches.
@@ -606,12 +606,12 @@ public fun share(vault: CapitalVault) {
 #[test_only]
 public fun new_for_testing(
     listing_id: ID,
-    issuer: address,
+    release_recipient: address,
     tranche_amounts: vector<u64>,
     tranche_times: vector<u64>,
     ctx: &mut TxContext,
 ): CapitalVault {
-    new(listing_id, issuer, tranche_amounts, tranche_times, ctx)
+    new(listing_id, release_recipient, tranche_amounts, tranche_times, ctx)
 }
 
 #[test_only]
@@ -625,10 +625,10 @@ public fun destroy_for_testing(vault: CapitalVault) {
 #[test_only]
 public fun new_with_deferred_for_testing(
     listing_id: ID,
-    issuer: address,
+    release_recipient: address,
     ctx: &mut TxContext,
 ): CapitalVault {
-    new_with_deferred_schedule(listing_id, issuer, ctx)
+    new_with_deferred_schedule(listing_id, release_recipient, ctx)
 }
 
 // === Unit Tests ===
@@ -652,7 +652,7 @@ fun test_new_vault() {
     let vault = new_with_deferred_for_testing(listing_id, issuer, &mut ctx);
     
     assert!(vault.listing_id() == listing_id);
-    assert!(vault.issuer() == issuer);
+    assert!(vault.release_recipient() == issuer);
     assert!(vault.total_principal() == 0);
     assert!(vault.total_shares() == 0);
     assert!(vault.num_tranches() == 0);

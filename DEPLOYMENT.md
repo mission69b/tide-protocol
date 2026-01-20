@@ -292,14 +292,19 @@ If the default URLs work for you, **skip to Step 8**.
 
 ### 7.1 Create Listing
 
+**Two addresses are required:**
+- `ISSUER_ADDRESS` - Protocol operator who manages the listing (you, Tide)
+- `RELEASE_RECIPIENT` - Artist/creator who receives capital tranches (e.g., Faith's wallet)
+
 ```bash
 sui client ptb \
   --assign pkg @$PACKAGE_ID \
   --assign registry @$REGISTRY \
   --assign council_cap @$COUNCIL_CAP \
   --assign issuer @$ISSUER_ADDRESS \
+  --assign release_recipient @$RELEASE_RECIPIENT \
   --assign validator @$VALIDATOR_ADDRESS \
-  --move-call "pkg::listing::new" registry council_cap issuer validator "vector[]" "vector[]" 1000u64 \
+  --move-call "pkg::listing::new" registry council_cap issuer release_recipient validator "vector[]" "vector[]" 1000u64 \
   --assign result \
   --move-call "pkg::listing::share" result.0 \
   --move-call "pkg::capital_vault::share" result.1 \
@@ -314,8 +319,8 @@ sui client ptb \
 - `CAPITAL_VAULT` (result.1)
 - `REWARD_VAULT` (result.2)
 - `STAKING_ADAPTER` (result.3)
-- `LISTING_CAP` (result.4) - transferred to issuer
-- `ROUTE_CAP` (result.5) - transferred to issuer
+- `LISTING_CAP` (result.4) - transferred to issuer (protocol operator)
+- `ROUTE_CAP` (result.5) - transferred to issuer (protocol operator)
 
 ### 7.2 Activate Listing
 
@@ -1025,7 +1030,7 @@ sui client ptb \
 
 | Function | Signature |
 |----------|-----------|
-| `listing::new` | `(registry, council_cap, issuer, validator, tranche_amounts, tranche_times, revenue_bps)` |
+| `listing::new` | `(registry, council_cap, issuer, release_recipient, validator, tranche_amounts, tranche_times, revenue_bps)` |
 | `listing::activate` | `(listing, council_cap, clock)` |
 | `listing::finalize` | `(listing, council_cap, capital_vault, clock)` |
 | `listing::deposit` | `(listing, tide, capital_vault, reward_vault, coin, clock) → SupporterPass` |

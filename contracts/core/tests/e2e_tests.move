@@ -72,7 +72,8 @@ fun create_listing(scenario: &mut Scenario) {
             listing::new(
                 &mut registry,
                 &council_cap,
-                ISSUER,
+                ADMIN,          // issuer = protocol operator (manages listing)
+                ISSUER,         // release_recipient = artist (receives capital)
                 VALIDATOR,
                 vector::empty(), // Deferred schedule
                 vector::empty(),
@@ -89,9 +90,9 @@ fun create_listing(scenario: &mut Scenario) {
         reward_vault::share(reward_vault);
         staking_adapter::share(staking_adapter);
         
-        // Transfer caps to issuer
-        listing::transfer_cap(listing_cap, ISSUER);
-        reward_vault::transfer_route_cap(route_cap, ISSUER);
+        // Transfer caps to admin (who manages) - caps go to issuer, not release_recipient
+        listing::transfer_cap(listing_cap, ADMIN);
+        reward_vault::transfer_route_cap(route_cap, ADMIN);
     };
 }
 
@@ -225,7 +226,7 @@ fun test_full_lifecycle_single_backer() {
     };
     
     // Route revenue
-    ts::next_tx(&mut scenario, ISSUER);
+    ts::next_tx(&mut scenario, ADMIN);
     {
         let mut reward_vault = ts::take_shared<RewardVault>(&scenario);
         let route_cap = ts::take_from_sender<RouteCapability>(&scenario);
@@ -242,7 +243,7 @@ fun test_full_lifecycle_single_backer() {
         assert!(reward_vault.global_index() > 0);
         
         ts::return_shared(reward_vault);
-        transfer::public_transfer(route_cap, ISSUER);
+        transfer::public_transfer(route_cap, ADMIN);
     };
     
     // Backer claims rewards
@@ -298,7 +299,7 @@ fun test_multi_backer_proportional_rewards() {
     };
     
     // Route 100 SUI in revenue
-    ts::next_tx(&mut scenario, ISSUER);
+    ts::next_tx(&mut scenario, ADMIN);
     {
         let mut reward_vault = ts::take_shared<RewardVault>(&scenario);
         let route_cap = ts::take_from_sender<RouteCapability>(&scenario);
@@ -307,7 +308,7 @@ fun test_multi_backer_proportional_rewards() {
         reward_vault.deposit_rewards(&route_cap, revenue, ts::ctx(&mut scenario));
         
         ts::return_shared(reward_vault);
-        transfer::public_transfer(route_cap, ISSUER);
+        transfer::public_transfer(route_cap, ADMIN);
     };
     
     // Backer 1 claims ~75 SUI
@@ -372,7 +373,7 @@ fun test_late_joiner_no_pre_deposit_claim() {
     backer_deposit(&mut scenario, BACKER1, 50_000_000_000);
     
     // Route revenue BEFORE Backer 2 joins
-    ts::next_tx(&mut scenario, ISSUER);
+    ts::next_tx(&mut scenario, ADMIN);
     {
         let mut reward_vault = ts::take_shared<RewardVault>(&scenario);
         let route_cap = ts::take_from_sender<RouteCapability>(&scenario);
@@ -381,7 +382,7 @@ fun test_late_joiner_no_pre_deposit_claim() {
         reward_vault.deposit_rewards(&route_cap, revenue, ts::ctx(&mut scenario));
         
         ts::return_shared(reward_vault);
-        transfer::public_transfer(route_cap, ISSUER);
+        transfer::public_transfer(route_cap, ADMIN);
     };
     
     // Backer 2 deposits AFTER rewards (late joiner)
@@ -442,7 +443,7 @@ fun test_transfer_claim_new_owner_claims() {
     backer_deposit(&mut scenario, BACKER1, 100_000_000_000);
     
     // Route revenue (1000 SUI to ensure index updates with precision)
-    ts::next_tx(&mut scenario, ISSUER);
+    ts::next_tx(&mut scenario, ADMIN);
     {
         let mut reward_vault = ts::take_shared<RewardVault>(&scenario);
         let route_cap = ts::take_from_sender<RouteCapability>(&scenario);
@@ -451,7 +452,7 @@ fun test_transfer_claim_new_owner_claims() {
         reward_vault.deposit_rewards(&route_cap, revenue, ts::ctx(&mut scenario));
         
         ts::return_shared(reward_vault);
-        transfer::public_transfer(route_cap, ISSUER);
+        transfer::public_transfer(route_cap, ADMIN);
     };
     
     // Backer 1 transfers pass to Backer 2
@@ -538,7 +539,7 @@ fun test_claims_allowed_when_paused() {
     backer_deposit(&mut scenario, BACKER1, 100_000_000_000);
     
     // Route revenue (1000 SUI for precision)
-    ts::next_tx(&mut scenario, ISSUER);
+    ts::next_tx(&mut scenario, ADMIN);
     {
         let mut reward_vault = ts::take_shared<RewardVault>(&scenario);
         let route_cap = ts::take_from_sender<RouteCapability>(&scenario);
@@ -547,7 +548,7 @@ fun test_claims_allowed_when_paused() {
         reward_vault.deposit_rewards(&route_cap, revenue, ts::ctx(&mut scenario));
         
         ts::return_shared(reward_vault);
-        transfer::public_transfer(route_cap, ISSUER);
+        transfer::public_transfer(route_cap, ADMIN);
     };
     
     // Pause protocol
@@ -595,7 +596,7 @@ fun test_per_listing_pause() {
     backer_deposit(&mut scenario, BACKER1, 100_000_000_000);
     
     // Route some revenue
-    ts::next_tx(&mut scenario, ISSUER);
+    ts::next_tx(&mut scenario, ADMIN);
     {
         let mut reward_vault = ts::take_shared<RewardVault>(&scenario);
         let route_cap = ts::take_from_sender<RouteCapability>(&scenario);
@@ -604,7 +605,7 @@ fun test_per_listing_pause() {
         reward_vault.deposit_rewards(&route_cap, revenue, ts::ctx(&mut scenario));
         
         ts::return_shared(reward_vault);
-        transfer::public_transfer(route_cap, ISSUER);
+        transfer::public_transfer(route_cap, ADMIN);
     };
     
     // Council pauses the LISTING (not protocol)
@@ -1058,7 +1059,7 @@ fun test_double_claim_fails() {
     backer_deposit(&mut scenario, BACKER1, 100_000_000_000);
     
     // Route revenue
-    ts::next_tx(&mut scenario, ISSUER);
+    ts::next_tx(&mut scenario, ADMIN);
     {
         let mut reward_vault = ts::take_shared<RewardVault>(&scenario);
         let route_cap = ts::take_from_sender<RouteCapability>(&scenario);
@@ -1067,7 +1068,7 @@ fun test_double_claim_fails() {
         reward_vault.deposit_rewards(&route_cap, revenue, ts::ctx(&mut scenario));
         
         ts::return_shared(reward_vault);
-        transfer::public_transfer(route_cap, ISSUER);
+        transfer::public_transfer(route_cap, ADMIN);
     };
     
     // First claim - should succeed
@@ -1695,7 +1696,7 @@ fun test_supporter_pass_total_claimed_tracking() {
     };
     
     // Route rewards
-    ts::next_tx(&mut scenario, ISSUER);
+    ts::next_tx(&mut scenario, ADMIN);
     {
         let mut reward_vault = ts::take_shared<RewardVault>(&scenario);
         let route_cap = ts::take_from_sender<RouteCapability>(&scenario);
@@ -1704,7 +1705,7 @@ fun test_supporter_pass_total_claimed_tracking() {
         reward_vault.deposit_rewards(&route_cap, revenue, ts::ctx(&mut scenario));
         
         ts::return_shared(reward_vault);
-        transfer::public_transfer(route_cap, ISSUER);
+        transfer::public_transfer(route_cap, ADMIN);
     };
     
     // First claim
@@ -1733,7 +1734,7 @@ fun test_supporter_pass_total_claimed_tracking() {
     };
     
     // Route more rewards
-    ts::next_tx(&mut scenario, ISSUER);
+    ts::next_tx(&mut scenario, ADMIN);
     {
         let mut reward_vault = ts::take_shared<RewardVault>(&scenario);
         let route_cap = ts::take_from_sender<RouteCapability>(&scenario);
@@ -1742,7 +1743,7 @@ fun test_supporter_pass_total_claimed_tracking() {
         reward_vault.deposit_rewards(&route_cap, revenue, ts::ctx(&mut scenario));
         
         ts::return_shared(reward_vault);
-        transfer::public_transfer(route_cap, ISSUER);
+        transfer::public_transfer(route_cap, ADMIN);
     };
     
     // Second claim - total_claimed should be cumulative
@@ -1869,7 +1870,7 @@ fun test_claim_many_multiple_passes() {
     };
     
     // Route 60 SUI in revenue (matches total deposit for easy math)
-    ts::next_tx(&mut scenario, ISSUER);
+    ts::next_tx(&mut scenario, ADMIN);
     {
         let mut reward_vault = ts::take_shared<RewardVault>(&scenario);
         let route_cap = ts::take_from_sender<RouteCapability>(&scenario);
@@ -1878,7 +1879,7 @@ fun test_claim_many_multiple_passes() {
         reward_vault.deposit_rewards(&route_cap, revenue, ts::ctx(&mut scenario));
         
         ts::return_shared(reward_vault);
-        transfer::public_transfer(route_cap, ISSUER);
+        transfer::public_transfer(route_cap, ADMIN);
     };
     
     // Batch claim all 3 passes
@@ -1961,7 +1962,7 @@ fun test_claim_many_skips_empty_claims() {
     };
     
     // Route some revenue
-    ts::next_tx(&mut scenario, ISSUER);
+    ts::next_tx(&mut scenario, ADMIN);
     {
         let mut reward_vault = ts::take_shared<RewardVault>(&scenario);
         let route_cap = ts::take_from_sender<RouteCapability>(&scenario);
@@ -1970,7 +1971,7 @@ fun test_claim_many_skips_empty_claims() {
         reward_vault.deposit_rewards(&route_cap, revenue, ts::ctx(&mut scenario));
         
         ts::return_shared(reward_vault);
-        transfer::public_transfer(route_cap, ISSUER);
+        transfer::public_transfer(route_cap, ADMIN);
     };
     
     // Claim only pass1 individually first
@@ -2114,7 +2115,7 @@ fun test_claim_from_kiosk() {
     };
     
     // Route some revenue
-    ts::next_tx(&mut scenario, ISSUER);
+    ts::next_tx(&mut scenario, ADMIN);
     {
         let mut reward_vault = ts::take_shared<RewardVault>(&scenario);
         let route_cap = ts::take_from_sender<RouteCapability>(&scenario);
@@ -2123,7 +2124,7 @@ fun test_claim_from_kiosk() {
         reward_vault.deposit_rewards(&route_cap, revenue, ts::ctx(&mut scenario));
         
         ts::return_shared(reward_vault);
-        transfer::public_transfer(route_cap, ISSUER);
+        transfer::public_transfer(route_cap, ADMIN);
     };
     
     // Claim rewards while pass is in Kiosk
@@ -2215,7 +2216,7 @@ fun test_claim_many_from_kiosk() {
     };
     
     // Route revenue
-    ts::next_tx(&mut scenario, ISSUER);
+    ts::next_tx(&mut scenario, ADMIN);
     {
         let mut reward_vault = ts::take_shared<RewardVault>(&scenario);
         let route_cap = ts::take_from_sender<RouteCapability>(&scenario);
@@ -2224,7 +2225,7 @@ fun test_claim_many_from_kiosk() {
         reward_vault.deposit_rewards(&route_cap, revenue, ts::ctx(&mut scenario));
         
         ts::return_shared(reward_vault);
-        transfer::public_transfer(route_cap, ISSUER);
+        transfer::public_transfer(route_cap, ADMIN);
     };
     
     // Batch claim from kiosk

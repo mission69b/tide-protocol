@@ -124,12 +124,12 @@ Holds contributed principal (SUI).
 
 - Accepts SUI deposits while listing is active
 - Tracks total principal and tranche state
-- Releases capital to issuer on a deterministic schedule
+- Releases capital to `release_recipient` (artist/creator) on a deterministic schedule
 
 **Invariants:**
 
 - Backers cannot withdraw principal
-- Principal MUST ONLY flow to the issuer via tranche release
+- Principal MUST ONLY flow to the `release_recipient` via tranche release
 - Principal MUST NEVER enter RewardVault
 
 ---
@@ -146,7 +146,7 @@ Provides limited capital productivity.
 If a tranche becomes releasable while capital remains staked:
 
 1. Unstake the tranche amount
-2. Release principal to issuer
+2. Release principal to `release_recipient`
 3. No further rewards accrue to that tranche after its release timestamp
 
 ---
