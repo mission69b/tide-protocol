@@ -14,7 +14,7 @@ Complete deployment and operations guide for Tide Protocol v1.
 6. [Deploy faith_router Package](#step-4-deploy-faith_router-package)
 7. [Deploy tide_marketplace Package](#step-5-deploy-tide_marketplace-package)
 8. [Deploy tide_loans Package](#step-6-deploy-tide_loans-package)
-9. [Setup SupporterPass Display](#step-7-setup-supporterpass-display)
+9. [SupporterPass Display (Auto-Created)](#step-7-supporterpass-display-auto-created)
 10. [Initialize FAITH Listing](#step-8-initialize-faith-listing)
 11. [Transfer Capabilities](#step-9-transfer-capabilities)
 12. [Verification](#step-10-verification)
@@ -251,39 +251,40 @@ sui client ptb \
 
 ---
 
-## Step 7: Setup SupporterPass Display
+## Step 7: SupporterPass Display (Auto-Created)
 
-After deploying `tide_core`, setup the Display for SupporterPass NFTs:
+> **Note:** The Display is now **automatically created** during `tide_core` publish!
+> You should have received `Publisher` and `Display<SupporterPass>` objects in Step 3.
 
-### 7.1 Create Display Object
+**Record from Step 3 output:**
+- `PUBLISHER_ID` - For future Display updates
+- `DISPLAY_ID` - The Display<SupporterPass> object
 
-```bash
-sui client ptb \
-  --assign pkg @$PACKAGE_ID \
-  --assign publisher @$PUBLISHER_ID \
-  --move-call "pkg::display::create_and_keep_supporter_pass_display" publisher \
-  --gas-budget 50000000
-```
+**Default URLs (already configured):**
+- `image_url`: `https://api.tide.am/pass/{listing_id}/{id}/image.svg`
+- `link`: `https://app.tide.am/listing/{listing_id}/pass/{id}`
 
-**Record:** `DISPLAY_ID` (Display<SupporterPass> object)
+### 7.1 Update Display URLs (Optional)
 
-### 7.2 Update Display URLs (Optional)
+Only run these if you need different URLs:
 
 ```bash
 # Update image URL
 sui client ptb \
   --assign pkg @$PACKAGE_ID \
   --assign display @$DISPLAY_ID \
-  --move-call "pkg::display::update_image_url" display "b\"https://api.tide.am/pass/{listing_id}/{id}/image.svg\"" \
+  --move-call "pkg::display::update_image_url" display "b\"https://your-api.com/pass/{listing_id}/{id}/image.svg\"" \
   --gas-budget 50000000
 
 # Update link
 sui client ptb \
   --assign pkg @$PACKAGE_ID \
   --assign display @$DISPLAY_ID \
-  --move-call "pkg::display::update_link" display "b\"https://app.tide.am/listing/{listing_id}/pass/{id}\"" \
+  --move-call "pkg::display::update_link" display "b\"https://your-app.com/listing/{listing_id}/pass/{id}\"" \
   --gas-budget 50000000
 ```
+
+If the default URLs work for you, **skip to Step 8**.
 
 ---
 
