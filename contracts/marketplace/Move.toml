@@ -2,9 +2,10 @@
 name = "tide_marketplace"
 edition = "2024"
 version = "1.0.0"
+published-at = "0xadc435dde32d321d77e0e1e09ec885b4dfb62bad6b6ad0b1553ea8dda76c773e"
 
 [dependencies]
 tide_core = { local = "../core" }
 
 [addresses]
-tide_marketplace = "0x0"
+tide_marketplace = "0xadc435dde32d321d77e0e1e09ec885b4dfb62bad6b6ad0b1553ea8dda76c773e"

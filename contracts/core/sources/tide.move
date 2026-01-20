@@ -8,7 +8,10 @@
 /// Tide holds no capital directly - fees flow to TreasuryVault.
 module tide_core::tide;
 
+use sui::package;
+
 use tide_core::constants;
+use tide_core::display;
 use tide_core::events;
 use tide_core::treasury_vault::{Self, TreasuryVault};
 
@@ -36,7 +39,8 @@ public struct Tide has key {
 // === Init ===
 
 fun init(otw: TIDE, ctx: &mut TxContext) {
-    let _ = otw;
+    // Claim publisher for Display creation
+    let publisher = package::claim(otw, ctx);
     
     // Create admin capability
     let admin_cap = AdminCap {
@@ -54,8 +58,17 @@ fun init(otw: TIDE, ctx: &mut TxContext) {
     // Create treasury vault
     let treasury_vault = treasury_vault::new(ctx);
     
+    // Create SupporterPass display using publisher
+    let supporter_pass_display = display::setup_supporter_pass_display(&publisher, ctx);
+    
     // Transfer admin cap to deployer
     transfer::transfer(admin_cap, ctx.sender());
+    
+    // Transfer publisher to deployer (for future display updates)
+    transfer::public_transfer(publisher, ctx.sender());
+    
+    // Transfer display to deployer (for future updates)
+    transfer::public_transfer(supporter_pass_display, ctx.sender());
     
     // Share tide as singleton
     transfer::share_object(tide);

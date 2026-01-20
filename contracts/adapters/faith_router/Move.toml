@@ -2,11 +2,11 @@
 name = "faith_router"
 edition = "2024"
 version = "1.0.0"
-published-at = "0x57ee3d515a05f269a63256f0f5c09ff306ecef1a06c8c6d6299135770eebfda8"
+published-at = "0x1a4e54de06c9bfa76dfd8c2a4021e96309053ba2f871182d1757052fc4a25c44"
 
 [dependencies]
 # tide_core inherits its address from its own Move.toml
 tide_core = { local = "../../core" }
 
 [addresses]
-faith_router = "0x0"
+faith_router = "0x1a4e54de06c9bfa76dfd8c2a4021e96309053ba2f871182d1757052fc4a25c44"

@@ -237,12 +237,15 @@ tide_loans = "0x<LOANS_PACKAGE_ID>"
 ### 6.4 Add Liquidity to Loan Vault
 
 ```bash
+# Admin deposits liquidity (e.g., 1000 SUI = 1000000000000 MIST)
+# Requires AdminCap from tide_core
 sui client ptb \
   --assign loans_pkg @$LOANS_PACKAGE_ID \
   --assign loan_vault @$LOAN_VAULT \
+  --assign admin_cap @$ADMIN_CAP \
   --split-coins gas "[1000000000000]" \
   --assign liquidity \
-  --move-call "loans_pkg::loan_vault::deposit_liquidity" loan_vault "liquidity.0" \
+  --move-call "loans_pkg::loan_vault::deposit_liquidity" loan_vault admin_cap "liquidity.0" \
   --gas-budget 100000000
 ```
 
@@ -851,8 +854,9 @@ sui client ptb \
 sui client ptb \
   --assign loans_pkg @$LOANS_PKG \
   --assign loan_vault @$LOAN_VAULT \
+  --assign admin_cap @$ADMIN_CAP \
   --assign liquidity_coin @$LIQUIDITY_COIN_ID \
-  --move-call "loans_pkg::loan_vault::deposit_liquidity" loan_vault liquidity_coin \
+  --move-call "loans_pkg::loan_vault::deposit_liquidity" loan_vault admin_cap liquidity_coin \
   --gas-budget 50000000
 ```
 
@@ -1067,7 +1071,7 @@ sui client ptb \
 | `loan_vault::harvest_and_repay` | `(vault, loan_id, listing, tide, reward_vault) → Coin<SUI>` |
 | `loan_vault::withdraw_collateral` | `(vault, receipt) → SupporterPass` |
 | `loan_vault::liquidate` | `(vault, loan_id, capital_vault, payment) → SupporterPass` |
-| `loan_vault::deposit_liquidity` | `(vault, coin)` |
+| `loan_vault::deposit_liquidity` | `(vault, admin_cap, coin)` |
 | `loan_vault::withdraw_liquidity` | `(vault, amount) → Coin<SUI>` |
 | `loan_vault::pause` | `(vault)` |
 | `loan_vault::unpause` | `(vault)` |
