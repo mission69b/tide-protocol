@@ -2,10 +2,10 @@
 name = "tide_loans"
 edition = "2024"
 version = "1.0.0"
-published-at = "0xa03605f54d3073a8d255796f1e7c1bf3b11c06b01615fb7b0fafebd66cb74994"
+published-at = "0xbec1ffea9715d7a5d909e170b7c4f42f149ea8f8398f7c3c143c7f384a99a5ce"
 
 [dependencies]
 tide_core = { local = "../core" }
 
 [addresses]
-tide_loans = "0xa03605f54d3073a8d255796f1e7c1bf3b11c06b01615fb7b0fafebd66cb74994"
+tide_loans = "0xbec1ffea9715d7a5d909e170b7c4f42f149ea8f8398f7c3c143c7f384a99a5ce"

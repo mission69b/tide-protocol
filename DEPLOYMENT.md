@@ -237,13 +237,13 @@ tide_loans = "0x<LOANS_PACKAGE_ID>"
 ### 6.4 Add Liquidity to Loan Vault
 
 ```bash
-# Admin deposits liquidity (e.g., 1000 SUI = 1000000000000 MIST)
+# Admin deposits liquidity (e.g., 10 SUI = 10000000000 MIST)
 # Requires AdminCap from tide_core
 sui client ptb \
   --assign loans_pkg @$LOANS_PACKAGE_ID \
   --assign loan_vault @$LOAN_VAULT \
   --assign admin_cap @$ADMIN_CAP \
-  --split-coins gas "[1000000000000]" \
+  --split-coins gas "[10000000000]" \
   --assign liquidity \
   --move-call "loans_pkg::loan_vault::deposit_liquidity" loan_vault admin_cap "liquidity.0" \
   --gas-budget 100000000
@@ -290,10 +290,25 @@ If the default URLs work for you, **skip to Step 8**.
 
 ## Step 8: Initialize FAITH Listing
 
-### 7.1 Create Listing
+### 8.0 Set Environment Variables
+
+Before running listing commands, export your variables:
+
+```bash
+# From your deployment (e.g., deployments/testnet/tide_core.json)
+export PACKAGE_ID=0x...         # tide_core package
+export REGISTRY=0x...           # listing_registry_id
+export COUNCIL_CAP=0x...        # council_cap_id
+export ISSUER_ADDRESS=0x...     # Your admin wallet (manages listing)
+export RELEASE_RECIPIENT=0x...  # Artist wallet (receives capital)
+export VALIDATOR_ADDRESS=0x...  # Sui validator for staking
+export FAITH_PACKAGE_ID=0x...   # faith_router package
+```
+
+### 8.1 Create Listing
 
 **Two addresses are required:**
-- `ISSUER_ADDRESS` - Protocol operator who manages the listing (you, Tide)
+- `ISSUER_ADDRESS` - Protocol operator who manages the listing (you, Tide) - receives RouteCapability
 - `RELEASE_RECIPIENT` - Artist/creator who receives capital tranches (e.g., Faith's wallet)
 
 ```bash
@@ -314,17 +329,22 @@ sui client ptb \
   --gas-budget 100000000
 ```
 
-**Record:**
-- `LISTING` (result.0)
-- `CAPITAL_VAULT` (result.1)
-- `REWARD_VAULT` (result.2)
-- `STAKING_ADAPTER` (result.3)
-- `LISTING_CAP` (result.4) - transferred to issuer (protocol operator)
-- `ROUTE_CAP` (result.5) - transferred to issuer (protocol operator)
+> **Note:** If you get errors like `Unexpected command`, check that all `$VARIABLE` values are exported.
 
-### 7.2 Activate Listing
+**Record:** (update your `tide_core.json`)
+- `listing_1_id` (result.0) - Listing
+- `listing_1_capital_vault_id` (result.1) - CapitalVault
+- `listing_1_reward_vault_id` (result.2) - RewardVault
+- `listing_1_staking_adapter_id` (result.3) - StakingAdapter
+- `listing_1_listing_cap_id` (result.4) - transferred to issuer (protocol operator)
+- `listing_1_route_cap_id` (result.5) - transferred to issuer (protocol operator)
+
+### 8.2 Activate Listing
 
 ```bash
+# Set listing ID from previous step
+export LISTING=0x...  # listing_1_id from above
+
 sui client ptb \
   --assign pkg @$PACKAGE_ID \
   --assign listing @$LISTING \
@@ -334,9 +354,12 @@ sui client ptb \
   --gas-budget 50000000
 ```
 
-### 7.3 Create FaithRouter (Optional)
+### 8.3 Create FaithRouter (Optional)
 
 ```bash
+# Set route_cap from step 8.1
+export ROUTE_CAP=0x...  # listing_1_route_cap_id
+
 sui client ptb \
   --assign faith_pkg @$FAITH_PACKAGE_ID \
   --assign route_cap @$ROUTE_CAP \
@@ -349,7 +372,9 @@ sui client ptb \
   --gas-budget 50000000
 ```
 
-**Record:** `FAITH_ROUTER` (result.0)
+**Record:** `faith_router_id` (result.0)
+
+> **Troubleshooting:** If you see `Unexpected command '--move-call'`, it means a variable like `$ISSUER_ADDRESS` is empty. Make sure you exported all variables in step 8.0.
 
 ---
 
