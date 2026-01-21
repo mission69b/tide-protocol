@@ -133,7 +133,7 @@ Modules are ordered by dependency (foundation first):
 
 | Event | Fields | Purpose |
 |-------|--------|---------|
-| `ListingCreated` | listing_id, listing_number, issuer, config_hash, min_deposit, raise_fee_bps, staking_backer_bps | Full config at creation for audit trail |
+| `ListingCreated` | listing_id, listing_number, issuer, release_recipient, config_hash, min_deposit, raise_fee_bps, staking_backer_bps | Full config at creation for audit trail |
 | `ListingActivated` | listing_id, activation_time | Marks start of deposit period |
 | `ListingFinalized` | listing_id, finalization_time, total_raised, total_backers, total_shares, num_tranches | Locks schedule and captures final raise metrics |
 | `ListingCompleted` | listing_id, total_released, total_distributed_rewards | Terminal state with lifetime metrics |
@@ -559,7 +559,7 @@ public struct RouteCapability has key, store {
 public struct CapitalVault has key {
     id: UID,
     listing_id: ID,
-    issuer: address,
+    release_recipient: address,  // Artist/creator who receives released capital
     balance: Balance<SUI>,
     total_principal: u64,
     total_shares: u128,
@@ -575,7 +575,7 @@ public struct Tranche has store, copy, drop {
 ```
 
 **Invariants:**
-- Principal only flows to issuer
+- Principal only flows to release_recipient
 - No backer withdrawals
 - Released tranches cannot re-release
 
@@ -640,7 +640,8 @@ public struct Listing has key {
 }
 
 public struct ListingConfig has copy, drop, store {
-    issuer: address,
+    issuer: address,               // Protocol operator (manages listing)
+    release_recipient: address,    // Artist/creator (receives capital releases)
     validator: address,
     tranche_amounts: vector<u64>,
     tranche_times: vector<u64>,

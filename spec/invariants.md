@@ -10,7 +10,7 @@ This document lists all security invariants that MUST hold for Tide Core v1. Vio
 
 | ID | Invariant | Location |
 |----|-----------|----------|
-| C1 | Principal MUST ONLY flow from CapitalVault to Issuer address | `capital_vault.move` |
+| C1 | Principal MUST ONLY flow from CapitalVault to `release_recipient` address | `capital_vault.move` |
 | C2 | Principal MUST NEVER enter RewardVault | `capital_vault.move`, `reward_vault.move` |
 | C3 | Backers CANNOT withdraw principal | `capital_vault.move` |
 | C4 | Capital release MUST follow deterministic schedule | `capital_vault.move`, `listing.move` |
@@ -94,13 +94,13 @@ This document lists all security invariants that MUST hold for Tide Core v1. Vio
 
 | ID | Invariant | Location |
 |----|-----------|----------|
-| D1 | Released capital MUST transfer directly to issuer address | `listing.move`, `capital_vault.move` |
+| D1 | Released capital MUST transfer directly to `release_recipient` address | `listing.move`, `capital_vault.move` |
 | D2 | Released capital MUST NOT pass through RewardVault or intermediary | `capital_vault.move` |
 | D3 | Released capital MUST NOT accrue staking rewards after release timestamp | `staking_adapter.move` |
 | D4 | Release schedule MUST be immutable after finalization | `capital_vault.move` |
 | D5 | Tranches MAY be released in any order once time passes | `capital_vault.move` |
 | D6 | Tranches MAY be released late but MUST NOT be skipped or lost | `capital_vault.move` |
-| D7 | Issuer MUST NOT accelerate, delay, or reorder releases | `capital_vault.move` |
+| D7 | No one MUST be able to accelerate, delay, or reorder releases | `capital_vault.move` |
 | D8 | Release eligibility is a pure function of on-chain time | `capital_vault.move` |
 | D9 | Each unit of principal released once and only once | `capital_vault.move` |
 | D10 | Lack of revenue MUST NOT halt or delay capital releases | `listing.move` |
@@ -126,6 +126,42 @@ For each invariant:
 2. **Unit tests** — Test happy path and violation attempts
 3. **Fuzz testing** — Random inputs cannot violate
 4. **Formal verification** — (if applicable) Prove invariant holds
+
+---
+
+## Refund Invariants (v1+)
+
+| ID | Invariant | Location |
+|----|-----------|----------|
+| RF1 | Refunds ONLY available in Cancelled state | `listing.move` |
+| RF2 | Refund amount is proportional to shares | `capital_vault.move` |
+| RF3 | Each pass can only claim refund once | `listing.move` |
+| RF4 | Pass is burned after successful refund | `listing.move` |
+| RF5 | Cannot cancel if capital is staked | `listing.move` |
+
+---
+
+## Marketplace Invariants (v1+)
+
+| ID | Invariant | Location |
+|----|-----------|----------|
+| M1 | Pass MUST remain in SaleListing escrow until buy/delist | `marketplace.move` |
+| M2 | 5% seller fee is deducted atomically with purchase | `marketplace.move` |
+| M3 | Fees MUST flow to TreasuryVault | `marketplace.move` |
+| M4 | Seller-only delist even when paused | `marketplace.move` |
+
+---
+
+## Loan Invariants (v1+)
+
+| ID | Invariant | Location |
+|----|-----------|----------|
+| LN1 | Pass MUST remain in LoanVault until loan resolved | `loan_vault.move` |
+| LN2 | Each pass can have at most one active loan | `loan_vault.move` |
+| LN3 | All rewards from collateralized pass go to loan repayment | `loan_vault.move` |
+| LN4 | Loan status transitions are unidirectional: Active → Repaid or Active → Liquidated | `loan_vault.move` |
+| LN5 | Liquidation only when health factor < 1.0 | `loan_vault.move` |
+| LN6 | Only LoanReceipt holder can withdraw collateral after repayment | `loan_vault.move` |
 
 ---
 

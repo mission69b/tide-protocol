@@ -163,6 +163,7 @@ use sui_system::sui_system::SuiSystemState;
 use tide_core::reward_vault::{RewardVault, RouteCapability};
 use tide_core::listing::Listing;
 use tide_core::tide::Tide;
+use tide_core::treasury_vault::TreasuryVault;
 use tide_core::staking_adapter::StakingAdapter;
 use tide_core::constants;
 
@@ -252,7 +253,7 @@ public fun route(
 /// This function allows the adapter to handle staking reward distribution
 /// using its stored RouteCapability. The rewards are split 80/20:
 /// - 80% → RewardVault (for backers to claim)
-/// - 20% → Treasury
+/// - 20% → TreasuryVault
 /// 
 /// Should be called periodically (e.g., every epoch) by a keeper.
 public fun harvest_and_route(
@@ -261,6 +262,7 @@ public fun harvest_and_route(
     tide: &Tide,
     staking_adapter: &mut StakingAdapter,
     reward_vault: &mut RewardVault,
+    treasury_vault: &mut TreasuryVault,
     system_state: &mut SuiSystemState,
     ctx: &mut TxContext,
 ) {
@@ -276,6 +278,7 @@ public fun harvest_and_route(
         tide,
         staking_adapter,
         reward_vault,
+        treasury_vault,
         route_cap,
         system_state,
         ctx,
@@ -355,8 +358,9 @@ sui client ptb \
   --assign tide @<TIDE_ID> \
   --assign staking_adapter @<STAKING_ADAPTER_ID> \
   --assign reward_vault @<REWARD_VAULT_ID> \
+  --assign treasury_vault @<TREASURY_VAULT_ID> \
   --assign system_state @0x5 \
-  --move-call "pkg::faith_router::harvest_and_route" router listing tide staking_adapter reward_vault system_state \
+  --move-call "pkg::faith_router::harvest_and_route" router listing tide staking_adapter reward_vault treasury_vault system_state \
   --gas-budget 100000000
 ```
 

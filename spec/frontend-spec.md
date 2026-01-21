@@ -1467,20 +1467,19 @@ SupporterPass uses Sui's `Display` standard. There is **ONE global Display** for
 - `{listing_id}` → Listing this pass belongs to
 - `{shares}` → Number of shares (u128)
 
-### 14.3 Display Setup Script
+### 14.3 Display Setup (Automatic)
 
-Run this after deploying `tide_core`:
+> **Note:** The `Display<SupporterPass>` is **automatically created** when `tide_core` is published. The `Publisher` and `Display` objects are transferred to the deployer's wallet.
 
-```bash
-# Setup Display for SupporterPass (requires Publisher object)
-sui client ptb \
-  --assign pkg @$PKG \
-  --assign publisher @$PUBLISHER_ID \
-  --move-call "pkg::display::create_and_keep_supporter_pass_display" publisher \
-  --gas-budget 50000000
-```
+**Objects created during deploy:**
+- `Publisher` - Required for future Display updates
+- `Display<SupporterPass>` - The display configuration object
 
-**Record:** The `Display<SupporterPass>` object ID for future updates.
+**Default URLs (pre-configured):**
+- `image_url`: `https://api.tide.am/pass/{listing_id}/{id}/image.svg`
+- `link`: `https://app.tide.am/listing/{listing_id}/pass/{id}`
+
+No manual setup is required unless you need to change the default URLs.
 
 ### 14.4 Update Display URLs
 
