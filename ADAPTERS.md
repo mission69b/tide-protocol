@@ -428,20 +428,39 @@ contracts/
 ## Checklist for New Adapters
 
 - [ ] Create new directory under `contracts/adapters/`
-- [ ] Copy template from `faith_router`
+- [ ] Copy `faith_router` as template
 - [ ] Update module name and struct names
 - [ ] Configure `revenue_bps` for the protocol
+- [ ] Add tests in `tests/` directory
 - [ ] Deploy package to testnet
 - [ ] Create router instance with `RouteCapability`
 - [ ] Test routing and claiming flow
+- [ ] Submit PR to Tide Protocol repository
 - [ ] Deploy to mainnet
 - [ ] Document the router object ID
+
+---
+
+## Contributing
+
+This repository is **open source**! We encourage partner protocols to contribute their adapters:
+
+1. **Fork** the repository
+2. **Copy** `faith_router` to `contracts/adapters/your_protocol/`
+3. **Customize** the adapter for your protocol
+4. **Add tests** covering your integration
+5. **Submit a PR** for code review
+
+See [INTEGRATION.md](./INTEGRATION.md) for the complete partner onboarding guide.
 
 ---
 
 ## Questions?
 
 For integration support, refer to:
+- `INTEGRATION.md` - Partner onboarding guide
 - `spec/tide-core-v1.md` - Core protocol specification
 - `DEPLOYMENT.md` - Deployment guide
 - `README.md` - Project overview
+
+Or open an issue on GitHub!

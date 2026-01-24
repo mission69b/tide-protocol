@@ -4,6 +4,8 @@
 
 This guide walks through the complete process for a protocol to integrate with Tide, from initial partnership to live revenue routing.
 
+> 🔓 **Open Source**: This repository is open source! Use [`faith_router`](./contracts/adapters/faith_router/) as a reference implementation and submit a PR with your own adapter.
+
 ---
 
 ## Table of Contents
@@ -213,16 +215,48 @@ Your adapter is a Move package that:
 2. Provides a `route()` function for your protocol to call
 3. Provides a `harvest_and_route()` function for staking rewards
 
-### 3.1 Create Package Structure
+### 3.1 Reference Implementation
+
+The **FaithRouter** is a complete, production-ready adapter you can use as reference:
 
 ```
-your_protocol_router/
+contracts/adapters/faith_router/
 ├── Move.toml
-└── sources/
-    └── router.move
+├── sources/
+│   └── faith_router.move
+└── tests/
+    └── e2e_tests.move
 ```
 
-### 3.2 Configure Move.toml
+📖 **Study this first!** It demonstrates all the patterns you need.
+
+### 3.2 Create Your Adapter (Fork or PR)
+
+**Option A: Fork the Repository**
+```bash
+git clone https://github.com/tide-protocol/tide-protocol.git
+cd tide-protocol/contracts/adapters
+cp -r faith_router your_protocol_router
+```
+
+**Option B: Submit a PR (Recommended)**
+
+We welcome adapter contributions! Create your adapter in the `contracts/adapters/` directory and submit a PR:
+
+```bash
+# Create your adapter directory
+mkdir -p contracts/adapters/your_protocol_router/sources
+mkdir -p contracts/adapters/your_protocol_router/tests
+```
+
+**PR Checklist:**
+- [ ] Adapter in `contracts/adapters/your_protocol_name/`
+- [ ] Uses `faith_router` as template
+- [ ] Includes tests in `tests/` directory
+- [ ] Move.toml configured correctly
+- [ ] README.md explaining your protocol integration
+
+### 3.3 Configure Move.toml
 
 ```toml
 [package]
@@ -232,17 +266,25 @@ edition = "2024.beta"
 
 [dependencies]
 Sui = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/sui-framework", rev = "framework/testnet" }
-tide_core = { local = "../../../core" }  # Adjust path
+tide_core = { local = "../../core" }
 
 [addresses]
 your_protocol_router = "0x0"
 ```
 
-### 3.3 Write Your Router (Use Template)
+### 3.4 Customize Your Router
 
-See [Adapter Template](#adapter-template) below for the full code.
+Starting from `faith_router.move`, customize:
 
-### 3.4 Build and Deploy
+| What to Change | Example |
+|----------------|---------|
+| Module name | `your_protocol_router::router` |
+| Struct names | `YourProtocolRouter`, `YourProtocolRouterCap` |
+| `revenue_bps` default | Your agreed percentage |
+| Additional fields | Custom stats, config, etc. |
+| Access control | Optional cap-gated routing |
+
+### 3.5 Build and Deploy
 
 ```bash
 cd your_protocol_router
@@ -391,162 +433,53 @@ sui client ptb \
 
 ## Adapter Template
 
-Here's the complete adapter template for your protocol:
+> 📁 **Primary Reference:** [`contracts/adapters/faith_router/`](./contracts/adapters/faith_router/)
+> 
+> Copy the `faith_router` directory and customize for your protocol.
+
+### Key Components
+
+Every adapter needs these core functions:
 
 ```move
-module your_protocol_router::router;
-
-use sui::coin::Coin;
-use sui::sui::SUI;
-use sui_system::sui_system::SuiSystemState;
-use tide_core::reward_vault::{RewardVault, RouteCapability};
-use tide_core::listing::Listing;
-use tide_core::tide::Tide;
-use tide_core::treasury_vault::TreasuryVault;
-use tide_core::staking_adapter::StakingAdapter;
-use tide_core::constants;
-
-// === Errors ===
-const EInvalidBps: u64 = 0;
-const EZeroAmount: u64 = 1;
-
-// === Structs ===
-
-/// The router object (shared after creation)
-public struct YourRouter has key {
-    id: UID,
-    /// ID of the Tide listing this router serves
-    listing_id: ID,
-    /// Revenue percentage in basis points (e.g., 1000 = 10%)
-    revenue_bps: u64,
-    /// Lifetime total SUI routed
-    total_routed: u64,
-    // RouteCapability stored as dynamic field (key: b"route_cap")
-}
-
-/// Capability to manage the router (held by protocol admin)
-public struct YourRouterCap has key, store {
-    id: UID,
-}
+module your_protocol::router;
 
 // === Constructor ===
-
-/// Create a new router. Consumes the RouteCapability.
-public fun new(
-    route_cap: RouteCapability,
-    revenue_bps: u64,
-    ctx: &mut TxContext,
-): (YourRouter, YourRouterCap) {
-    assert!(revenue_bps <= constants::max_bps!(), EInvalidBps);
-    
-    let listing_id = route_cap.route_cap_listing_id();
-    let mut router_uid = object::new(ctx);
-    
-    // Store RouteCapability in dynamic field (secure storage)
-    sui::dynamic_field::add(&mut router_uid, b"route_cap", route_cap);
-    
-    let router = YourRouter {
-        id: router_uid,
-        listing_id,
-        revenue_bps,
-        total_routed: 0,
-    };
-    
-    let cap = YourRouterCap {
-        id: object::new(ctx),
-    };
-    
-    (router, cap)
-}
+/// Consumes RouteCapability, creates shared router
+public fun new(route_cap: RouteCapability, revenue_bps: u64, ctx: &mut TxContext)
+    : (YourRouter, YourRouterCap)
 
 // === Revenue Routing ===
+/// Route protocol revenue to backers
+public fun route(self: &mut YourRouter, reward_vault: &mut RewardVault, coin: Coin<SUI>, ctx: &TxContext)
 
-/// Route revenue to the Tide RewardVault.
-/// Called by your protocol when collecting fees.
-/// 
-/// This is permissionless - anyone can route revenue.
-/// For gated routing, add `_cap: &YourRouterCap` parameter.
-public fun route(
-    self: &mut YourRouter,
-    reward_vault: &mut RewardVault,
-    coin: Coin<SUI>,
-    ctx: &TxContext,
-) {
-    let amount = coin.value();
-    assert!(amount > 0, EZeroAmount);
-    
-    // Get the stored RouteCapability
-    let route_cap = sui::dynamic_field::borrow<vector<u8>, RouteCapability>(
-        &self.id,
-        b"route_cap",
-    );
-    
-    // Deposit to Tide RewardVault
-    reward_vault.deposit_rewards(route_cap, coin, ctx);
-    
-    // Update lifetime stats
-    self.total_routed = self.total_routed + amount;
-}
-
-// === Staking Integration ===
-
-/// Harvest staking rewards and route backer share to RewardVault.
-/// 
-/// Split: 80% → RewardVault (backers), 20% → TreasuryVault (Tide)
-/// 
-/// Should be called periodically (every epoch) by a keeper.
-public fun harvest_and_route(
-    self: &mut YourRouter,
-    listing: &Listing,
-    tide: &Tide,
-    staking_adapter: &mut StakingAdapter,
-    reward_vault: &mut RewardVault,
-    treasury_vault: &mut TreasuryVault,
-    system_state: &mut SuiSystemState,
-    ctx: &mut TxContext,
-) {
-    let route_cap = sui::dynamic_field::borrow<vector<u8>, RouteCapability>(
-        &self.id,
-        b"route_cap",
-    );
-    
-    tide_core::listing::harvest_staking_rewards(
-        listing,
-        tide,
-        staking_adapter,
-        reward_vault,
-        treasury_vault,
-        route_cap,
-        system_state,
-        ctx,
-    );
-}
+// === Staking ===
+/// Harvest staking rewards (80% backers, 20% treasury)
+public fun harvest_and_route(self: &mut YourRouter, listing: &Listing, tide: &Tide, ...)
 
 // === Helpers ===
+/// Calculate backer share from total fees
+public fun calculate_revenue(self: &YourRouter, total_fees: u64): u64
 
-/// Calculate revenue amount from total fees.
-/// Use this to determine how much to route.
-public fun calculate_revenue(self: &YourRouter, total_fees: u64): u64 {
-    (((total_fees as u128) * (self.revenue_bps as u128)) 
-        / (constants::max_bps!() as u128)) as u64
-}
-
-// === View Functions ===
-
-public fun listing_id(self: &YourRouter): ID { self.listing_id }
-public fun revenue_bps(self: &YourRouter): u64 { self.revenue_bps }
-public fun total_routed(self: &YourRouter): u64 { self.total_routed }
-
-// === Share/Transfer ===
-
-public fun share(router: YourRouter) {
-    sui::transfer::share_object(router);
-}
-
-public fun transfer_cap(cap: YourRouterCap, recipient: address) {
-    sui::transfer::public_transfer(cap, recipient);
-}
+// === Sharing ===
+public fun share(router: YourRouter)
+public fun transfer_cap(cap: YourRouterCap, recipient: address)
 ```
+
+### Critical Pattern: Secure RouteCapability Storage
+
+```move
+// Store in dynamic field (not public field!)
+sui::dynamic_field::add(&mut router_uid, b"route_cap", route_cap);
+
+// Borrow when needed
+let route_cap = sui::dynamic_field::borrow<vector<u8>, RouteCapability>(
+    &self.id, 
+    b"route_cap"
+);
+```
+
+See [`faith_router.move`](./contracts/adapters/faith_router/sources/faith_router.move) for the complete implementation.
 
 ---
 
@@ -666,11 +599,72 @@ public fun maybe_route(
 
 ---
 
+## Contributing Your Adapter
+
+This repository is **open source**. We encourage partners to contribute their adapters!
+
+### Repository Structure
+
+```
+tide-protocol/
+├── contracts/
+│   ├── core/                    # Tide Core (don't modify)
+│   ├── adapters/                # 👈 Add your adapter here!
+│   │   ├── faith_router/        # Reference implementation
+│   │   ├── your_protocol/       # Your adapter (PR welcome!)
+│   │   └── another_protocol/    # Future adapters
+│   ├── marketplace/
+│   └── loans/
+└── ...
+```
+
+### Submitting a PR
+
+1. **Fork the repository**
+2. **Create your adapter** in `contracts/adapters/your_protocol/`
+3. **Use faith_router as template** — copy and customize
+4. **Add tests** in `tests/` subdirectory
+5. **Submit PR** with description of your protocol
+
+**PR Template:**
+```markdown
+## New Adapter: [Your Protocol Name]
+
+### Protocol Description
+Brief description of your protocol and what fees you're routing.
+
+### Revenue Model
+- Revenue BPS: X% (e.g., 1000 = 10%)
+- Routing frequency: [per transaction / daily / monthly]
+
+### Testing
+- [ ] Unit tests passing
+- [ ] E2E tests passing
+- [ ] Testnet integration verified
+
+### Checklist
+- [ ] Follows faith_router pattern
+- [ ] RouteCapability stored securely
+- [ ] Events emitted for indexing
+- [ ] Documentation updated
+```
+
+### Benefits of Contributing
+
+| Benefit | Description |
+|---------|-------------|
+| **Code Review** | Tide team reviews your adapter for security |
+| **Visibility** | Listed in official repository |
+| **Updates** | Notified of Tide Core changes |
+| **Support** | Direct access to Tide engineering |
+
+---
+
 ## Support
 
 For integration support:
 
-- **Email:** integrations@tide.am
+- **GitHub Issues:** [tide-protocol/tide-protocol/issues](https://github.com/tide-protocol/tide-protocol/issues)
 - **Discord:** [Tide Protocol Discord]
 - **Docs:**
   - [ADAPTERS.md](./ADAPTERS.md) — Technical adapter details
