@@ -575,22 +575,31 @@ See [LOANS.md](./LOANS.md) for:
 
 ## Protocol Integrations
 
-See [ADAPTERS.md](./ADAPTERS.md) for:
-- Adapter architecture pattern
-- How protocols route revenue to Tide
-- Step-by-step integration guide
-- Template for new protocol adapters
+**Want to integrate your protocol with Tide?** See our partner guides:
 
-Quick start:
+| Guide | Purpose |
+|-------|---------|
+| [INTEGRATION.md](./INTEGRATION.md) | **Partner onboarding guide** — Complete walkthrough from partnership to live revenue routing |
+| [ADAPTERS.md](./ADAPTERS.md) | Technical adapter architecture — How adapters work, template code, best practices |
+
+### Quick Integration Summary
+
+1. **Partnership Setup** — Define terms with Tide (revenue %, addresses)
+2. **Listing Creation** — Tide council creates your listing, you receive `RouteCapability`
+3. **Deploy Adapter** — Deploy your router package (use template)
+4. **Create Router** — Consume `RouteCapability` to create router instance
+5. **Activate & Route** — Start accepting deposits and routing revenue
+
 ```bash
-# Install deployment scripts
-cd scripts
-npm install
-
-# Deploy to testnet
-export DEPLOYER_PRIVATE_KEY="your_private_key_hex"
-npm run deploy:testnet
+# Route revenue to backers (after setup)
+sui client ptb \
+  --split-coins gas "[100000000]" \
+  --assign revenue \
+  --move-call "pkg::router::route" router reward_vault "revenue.0" \
+  --gas-budget 50000000
 ```
+
+For detailed deployment steps, see [DEPLOYMENT.md](./DEPLOYMENT.md).
 
 ## License
 
