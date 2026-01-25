@@ -1,15 +1,32 @@
 # DeepBook Integration Specification
 
 > **Version:** v1.0
-> **Status:** 📝 DRAFT
+> **Status:** ⏸️ **DEFERRED** — Revisit when treasury utilization exceeds 50%
 > **Author:** Tide Protocol
 > **Last Updated:** January 2026
+
+## Why Deferred?
+
+**Current priority:** Get FAITH onboarded, prove the protocol works with 1-2 issuers.
+
+**DeepBook solves a scale problem we don't have yet:**
+- Treasury-funded loans are sufficient for early stage
+- Fixed 5% rate is simple and predictable
+- Flash liquidations are rarely needed (self-paying loans auto-repay)
+
+**When to revisit:**
+- Treasury consistently 50%+ utilized
+- Multiple issuers onboarded (3+)
+- User demand for lower/dynamic rates
+- High liquidation volume
+
+---
 
 ## Executive Summary
 
 This specification outlines the integration of [DeepBook V3](https://docs.sui.io/standards/deepbook) and [DeepBook Margin](https://docs.sui.io/standards/deepbook-margin) with Tide Protocol's Self-Paying Loans feature.
 
-### Simplified Roadmap (3 Phases)
+### Simplified Roadmap (3 Phases) — DEFERRED
 
 | Phase | Feature | User Impact | Timeline |
 |-------|---------|-------------|----------|

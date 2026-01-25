@@ -627,7 +627,7 @@ tide-protocol/
 │   ├── marketplace-v1.md             # Marketplace specification (current)
 │   ├── marketplace-v2.md             # Bid system specification (planned)
 │   ├── self-paying-loans-v2.md       # Loans specification
-│   ├── deepbook-integration-v1.md    # DeepBook integration (planned)
+│   ├── deepbook-integration-v1.md    # DeepBook integration (deferred)
 │   ├── frontend-spec.md              # Frontend/API specification
 │   └── invariants.md                 # Security invariants
 │
@@ -742,16 +742,19 @@ All state transitions emit `StateChanged` for secondary verification.
 
 ### Future Considerations (v2+)
 
-**DeepBook Integration (see `spec/deepbook-integration-v1.md`):**
-- Phase 1: Flash loan liquidations
-- Phase 2: Dynamic interest rates (utilization-based)
-- Phase 3: Hybrid liquidity (source from DeepBook pools)
-- Phase 4: DEEP token rewards for backers
+**DeepBook Integration — ⏸️ DEFERRED (see `spec/deepbook-integration-v1.md`):**
 
-**Marketplace v2 (see `spec/marketplace-v2.md`):**
+Deferred until protocol reaches scale (treasury 50%+ utilized, 3+ issuers).
+- Flash loan liquidations
+- Dynamic interest rates
+- DeepBook liquidity
+- DEEP token rewards
+
+**Marketplace v2 — ⏸️ DEFERRED (see `spec/marketplace-v2.md`):**
+
+Deferred until DeepBook integration is needed.
 - Bid system (buy orders)
 - Instant sell to best bid
-- Capital-free flash liquidations
 
 **Other Future Features:**
 - Pool-based lending with external lenders

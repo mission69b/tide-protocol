@@ -249,25 +249,21 @@ sui move test
 sui move test --coverage
 ```
 
-## Future: DeepBook Integration (Simplified)
+## Future: DeepBook Integration — ⏸️ DEFERRED
 
-Planned enhancements via DeepBook V3:
+DeepBook integration is **deferred** until the protocol reaches scale:
 
-| Phase | Feature | User Impact | Duration |
-|-------|---------|-------------|----------|
-| **Phase 1** | DeepBook Integration | 10x capacity + market rates | 2-3 weeks |
-| **Phase 2** | Flash Liquidations | Capital-efficient liquidations | 1 week |
-| **Phase 3** | DEEP Token Rewards | Bonus yield for backers | 1-2 weeks |
+**Current approach (v1):**
+- Treasury-funded loans (simple, works for 1-2 issuers)
+- Fixed 5% APR (predictable for borrowers)
+- Standard liquidations (rarely needed with self-paying loans)
 
-**Total: 4-6 weeks** (simplified from 10+ weeks)
+**When to revisit DeepBook:**
+- Treasury consistently 50%+ utilized
+- 3+ issuers onboarded
+- User demand for dynamic rates
 
-**Key Simplifications:**
-- **No custom rate curves** — Use DeepBook's `borrow_rate()` directly
-- **DeepBook-only liquidity** — Single `BalanceManager` instead of hybrid
-- **Flash + Keep only** — Deferred Flash + Sell (requires bid system)
-- **Simplified DEEP distribution** — Epoch-based snapshots
-
-See [spec/deepbook-integration-v1.md](./spec/deepbook-integration-v1.md) for the full specification.
+See [spec/deepbook-integration-v1.md](./spec/deepbook-integration-v1.md) for the full specification (when ready to implement).
 
 ## Related Documentation
 

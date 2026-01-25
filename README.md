@@ -511,9 +511,9 @@ tide-protocol/
 ├── spec/
 │   ├── tide-core-v1.md          # Locked specification
 │   ├── marketplace-v1.md        # Marketplace specification (current)
-│   ├── marketplace-v2.md        # Marketplace bid system (planned)
+│   ├── marketplace-v2.md        # Marketplace bid system (deferred)
 │   ├── self-paying-loans-v2.md  # Self-paying loans design (v2)
-│   ├── deepbook-integration-v1.md # DeepBook integration (planned)
+│   ├── deepbook-integration-v1.md # DeepBook integration (deferred)
 │   ├── frontend-spec.md         # Frontend/API specification
 │   └── invariants.md            # Audit-ready invariant list
 │
@@ -576,23 +576,20 @@ See [LOANS.md](./LOANS.md) for:
 - Keeper model for harvesting
 - Liquidation mechanics
 
-### DeepBook Integration (Planned)
+### DeepBook Integration — ⏸️ DEFERRED
 
-See [spec/deepbook-integration-v1.md](./spec/deepbook-integration-v1.md) for the full specification.
+DeepBook integration is **deferred** until the protocol reaches scale.
 
-**Simplified 3-Phase Approach (4-6 weeks):**
+**Current approach (v1):**
+- Treasury-funded loans (sufficient for FAITH + 1-2 issuers)
+- Fixed 5% APR (simple, predictable)
 
-| Phase | Feature | User Impact |
-|-------|---------|-------------|
-| **1** | DeepBook Integration | 10x capacity + market rates |
-| **2** | Flash Liquidations | Capital-efficient liquidations |
-| **3** | DEEP Token Rewards | Bonus yield for backers |
+**When to revisit:**
+- Treasury 50%+ utilized consistently
+- 3+ issuers onboarded
+- User demand for dynamic rates
 
-**Key Simplifications:**
-- Use DeepBook's `borrow_rate()` directly (no custom rate curves)
-- DeepBook-only liquidity via `BalanceManager` (no hybrid)
-- Flash + Keep only (Flash + Sell deferred)
-- Epoch-based DEEP distribution (simplified tracking)
+See [spec/deepbook-integration-v1.md](./spec/deepbook-integration-v1.md) for the specification (when ready).
 
 **Note:** Phase 3 has sub-phases: 3A (flash + keep), 3B (marketplace bid system), 3C (flash + sell).
 
