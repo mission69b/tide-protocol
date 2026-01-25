@@ -7,19 +7,26 @@
 
 ## Executive Summary
 
-This specification outlines the integration of [DeepBook V3](https://docs.sui.io/standards/deepbook) and [DeepBook Margin](https://docs.sui.io/standards/deepbook-margin) with Tide Protocol's Self-Paying Loans feature. The integration aims to:
+This specification outlines the integration of [DeepBook V3](https://docs.sui.io/standards/deepbook) and [DeepBook Margin](https://docs.sui.io/standards/deepbook-margin) with Tide Protocol's Self-Paying Loans feature.
 
-1. **Increase lending capacity** via DeepBook liquidity pools
-2. **Enable capital-free liquidations** via flash loans
-3. **Implement dynamic interest rates** based on utilization
-4. **Add DEEP token rewards** for Tide backers
+### Priority Order (Value-First)
 
-**Key Benefits:**
-- 10x+ increase in lending capacity
-- Faster, more efficient liquidations
-- Market-driven interest rates
-- Additional yield for backers
-- First-mover advantage as early DeepBook Margin adopter
+| Priority | Feature | User Impact | Timeline |
+|----------|---------|-------------|----------|
+| 1️⃣ | **Dynamic Interest Rates** | ALL borrowers get fairer rates | 1 week |
+| 2️⃣ | **Hybrid Liquidity** | 10x+ lending capacity | 3-4 weeks |
+| 3️⃣ | **Flash Liquidations** | Capital-free liquidations | 1-2 weeks |
+| 4️⃣ | **DEEP Token Rewards** | Bonus yield for backers | 2-3 weeks |
+
+### Key Benefits
+
+| Benefit | Impact |
+|---------|--------|
+| **10x+ lending capacity** | Hybrid liquidity from DeepBook pools |
+| **Market-driven interest rates** | Fairer for borrowers, competitive with DeFi |
+| **Capital-free liquidations** | Lower barrier for liquidators |
+| **Additional yield** | DEEP tokens for backers |
+| **First-mover advantage** | Early DeepBook Margin adopter
 
 ---
 
@@ -27,9 +34,9 @@ This specification outlines the integration of [DeepBook V3](https://docs.sui.io
 
 1. [Background](#1-background)
 2. [Integration Architecture](#2-integration-architecture)
-3. [Phase 1: Flash Loan Liquidations](#3-phase-1-flash-loan-liquidations)
-4. [Phase 2: Dynamic Interest Rates](#4-phase-2-dynamic-interest-rates)
-5. [Phase 3: Hybrid Liquidity](#5-phase-3-hybrid-liquidity)
+3. [Phase 1: Dynamic Interest Rates](#3-phase-1-dynamic-interest-rates) ⭐ HIGH VALUE
+4. [Phase 2: Hybrid Liquidity](#4-phase-2-hybrid-liquidity) ⭐ HIGH VALUE
+5. [Phase 3: Flash Loan Liquidations](#5-phase-3-flash-loan-liquidations)
 6. [Phase 4: DEEP Token Rewards](#6-phase-4-deep-token-rewards)
 7. [Phase 5: Margin Trading Extension](#7-phase-5-margin-trading-extension)
 8. [Technical Implementation](#8-technical-implementation)
@@ -154,10 +161,10 @@ DeepBook Margin extends DeepBook with leveraged trading:
 │   │  │ (SUI/USDC)  │    │  Manager    │    │  Manager    │               │ │
 │   │  └─────────────┘    └─────────────┘    └─────────────┘               │ │
 │   │                                                                        │ │
-│   │  Features Used:                                                        │ │
-│   │  • Flash loans (Phase 1)                                              │ │
-│   │  • Liquidity pools (Phase 3)                                          │ │
-│   │  • Interest rate oracles (Phase 2)                                    │ │
+│   │  Features Used (Priority Order):                                      │ │
+│   │  • Interest rate oracles (Phase 1) ⭐ HIGH VALUE                      │ │
+│   │  • Liquidity pools (Phase 2) ⭐ HIGH VALUE                            │ │
+│   │  • Flash loans (Phase 3)                                              │ │
 │   │  • DEEP token integration (Phase 4)                                   │ │
 │   │                                                                        │ │
 │   └────────────────────────────────────────────────────────────────────────┘ │
@@ -1327,29 +1334,9 @@ Flash loan flow from DeepBook (atomic within one transaction):
 
 ## 10. Testing Requirements
 
-### 10.1 Unit Tests
+### 10.1 Unit Tests (Priority Order)
 
-**Phase 1A: Flash Liquidate + Keep**
-- [ ] `test_flash_liquidate_and_keep_success`
-- [ ] `test_flash_liquidate_and_keep_insufficient_repayment_fails`
-- [ ] `test_flash_liquidate_and_keep_healthy_loan_fails`
-- [ ] `test_flash_liquidate_and_keep_returns_excess`
-- [ ] `test_estimate_keep_profit`
-
-**Phase 1B: Marketplace Bid System (see marketplace-v2.md)**
-- [ ] `test_create_buy_order`
-- [ ] `test_cancel_buy_order`
-- [ ] `test_instant_sell`
-- [ ] `test_instant_sell_fee_calculation`
-
-**Phase 1C: Flash Liquidate + Sell**
-- [ ] `test_flash_liquidate_and_sell_success`
-- [ ] `test_flash_liquidate_and_sell_bid_too_low_fails`
-- [ ] `test_flash_liquidate_and_sell_healthy_loan_fails`
-- [ ] `test_estimate_sell_profit`
-- [ ] `test_is_profitable_with_bid`
-
-**Phase 2: Dynamic Rates**
+**Phase 1: Dynamic Rates** ⭐ HIGH VALUE
 - [ ] `test_rate_at_zero_utilization`
 - [ ] `test_rate_at_optimal_utilization`
 - [ ] `test_rate_above_optimal_utilization`
@@ -1357,12 +1344,32 @@ Flash loan flow from DeepBook (atomic within one transaction):
 - [ ] `test_rate_cap`
 - [ ] `test_interest_accrual_with_dynamic_rate`
 
-**Phase 3: Hybrid Liquidity**
+**Phase 2: Hybrid Liquidity** ⭐ HIGH VALUE
 - [ ] `test_borrow_from_deepbook`
 - [ ] `test_repay_to_deepbook`
 - [ ] `test_blended_rate_calculation`
 - [ ] `test_exposure_limits`
 - [ ] `test_waterfall_repayment`
+
+**Phase 3A: Flash Liquidate + Keep**
+- [ ] `test_flash_liquidate_and_keep_success`
+- [ ] `test_flash_liquidate_and_keep_insufficient_repayment_fails`
+- [ ] `test_flash_liquidate_and_keep_healthy_loan_fails`
+- [ ] `test_flash_liquidate_and_keep_returns_excess`
+- [ ] `test_estimate_keep_profit`
+
+**Phase 3B: Marketplace Bid System (see marketplace-v2.md)**
+- [ ] `test_create_buy_order`
+- [ ] `test_cancel_buy_order`
+- [ ] `test_instant_sell`
+- [ ] `test_instant_sell_fee_calculation`
+
+**Phase 3C: Flash Liquidate + Sell**
+- [ ] `test_flash_liquidate_and_sell_success`
+- [ ] `test_flash_liquidate_and_sell_bid_too_low_fails`
+- [ ] `test_flash_liquidate_and_sell_healthy_loan_fails`
+- [ ] `test_estimate_sell_profit`
+- [ ] `test_is_profitable_with_bid`
 
 **Phase 4: DEEP Rewards**
 - [ ] `test_deposit_deep`
@@ -1390,52 +1397,76 @@ Flash loan flow from DeepBook (atomic within one transaction):
 
 ### 11.1 Timeline
 
-| Phase | Feature | Duration | Dependencies | Status |
-|-------|---------|----------|--------------|--------|
-| **1A** | Flash Liquidate + Keep | 1 week | DeepBook only | 📋 Planned |
-| **1B** | Marketplace Bid System | 2 weeks | Marketplace v2 | 📋 Planned |
-| **1C** | Flash Liquidate + Sell | 1 week | 1A + 1B | 📋 Planned |
-| **2** | Dynamic Interest Rates | 1 week | None | 📋 Planned |
-| **3** | Hybrid Liquidity | 3-4 weeks | Phase 2 | 📋 Planned |
-| **4** | DEEP Token Rewards | 2-3 weeks | None | 📋 Planned |
-| **5** | Margin Trading | 8+ weeks | All above | 🔮 Future |
+| Phase | Feature | Duration | Dependencies | User Value | Status |
+|-------|---------|----------|--------------|------------|--------|
+| **1** | Dynamic Interest Rates | 1 week | None | ⭐⭐⭐⭐⭐ | 📋 Planned |
+| **2** | Hybrid Liquidity | 3-4 weeks | Phase 1 | ⭐⭐⭐⭐⭐ | 📋 Planned |
+| **3A** | Flash Liquidate + Keep | 1 week | DeepBook only | ⭐⭐⭐ | 📋 Planned |
+| **3B** | Marketplace Bid System | 2 weeks | Marketplace v2 | ⭐⭐⭐ | 📋 Planned |
+| **3C** | Flash Liquidate + Sell | 1 week | 3A + 3B | ⭐⭐⭐ | 📋 Planned |
+| **4** | DEEP Token Rewards | 2-3 weeks | None | ⭐⭐⭐ | 📋 Planned |
+| **5** | Margin Trading | 8+ weeks | All above | ⭐⭐⭐⭐ | 🔮 Future |
 
-**Recommended Order:** 1A → 2 → 1B → 1C → 3 → 4
+**Recommended Order:** 1 → 2 → 3A → 4 → (3B → 3C in parallel)
 
-This allows:
-- Quick win with Phase 1A (1 week)
-- Dynamic rates deployed early (good for users)
-- Bid system developed in parallel
-- Full capital-free liquidations last
+**Rationale for Value-First Ordering:**
 
-### 11.2 Rollout Strategy
+| Priority | Feature | Why First? |
+|----------|---------|------------|
+| 1️⃣ | **Dynamic Interest Rates** | Benefits ALL borrowers immediately with market-fair rates. Low complexity (1 week). |
+| 2️⃣ | **Hybrid Liquidity** | Unlocks 10x+ lending capacity. The #1 bottleneck for Tide growth. |
+| 3️⃣ | **Flash Liquidations** | Nice-to-have for liquidators, but small user base. Can be parallel with Phase 4. |
+| 4️⃣ | **DEEP Rewards** | Bonus yield for backers. Can run in parallel with Flash Liquidations. |
+
+**Why NOT Flash Liquidations First (original order)?**
+- Only benefits liquidators (tiny audience)
+- Borrowers don't see any improvement
+- Lending capacity stays limited
+
+**Why Dynamic Rates + Hybrid Liquidity First?**
+- ALL borrowers get fairer, market-driven rates
+- 10x+ more loans can be issued → more revenue for Tide
+- More attractive to new users → growth
+
+### 11.2 Rollout Strategy (Value-First)
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                          DEPLOYMENT ROLLOUT                                  │
+│                      DEPLOYMENT ROLLOUT (VALUE-FIRST)                        │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                              │
-│  Week 1-2: Development                                                       │
+│  Week 1: Phase 1 - Dynamic Interest Rates ⭐ HIGH VALUE                      │
+│  ├── Implement dynamic_rates.move                                           │
+│  ├── Integrate with DeepBook rate oracles                                   │
+│  ├── Write unit tests                                                        │
+│  └── Deploy to testnet                                                       │
+│                                                                              │
+│  Week 2-5: Phase 2 - Hybrid Liquidity ⭐ HIGH VALUE                          │
+│  ├── Implement deepbook_bridge.move                                         │
+│  ├── BalanceManager integration                                             │
+│  ├── Waterfall repayment logic                                              │
+│  ├── Exposure limits and safety checks                                      │
+│  └── Deploy to testnet                                                       │
+│                                                                              │
+│  Week 6-7: Phase 3A - Flash Liquidations (Keep)                             │
 │  ├── Implement flash_liquidator.move                                        │
 │  ├── Write unit tests                                                        │
-│  └── Internal review                                                         │
+│  └── Deploy to testnet                                                       │
 │                                                                              │
-│  Week 3: Testnet                                                             │
-│  ├── Deploy to Sui testnet                                                   │
-│  ├── Integration testing with DeepBook testnet pools                        │
-│  └── Community testing (testnet)                                             │
+│  Week 8-10: Phase 4 - DEEP Token Rewards                                    │
+│  ├── Implement deep_rewards.move                                            │
+│  ├── DEEP token staking integration                                         │
+│  └── Deploy to testnet                                                       │
 │                                                                              │
-│  Week 4: Audit                                                               │
-│  ├── External audit (incremental)                                           │
-│  ├── Fix findings                                                            │
-│  └── Re-test                                                                 │
+│  (Parallel) Week 8-10: Phase 3B+3C - Marketplace Bid System + Flash Sell   │
+│  ├── Implement BuyOrder system (marketplace-v2)                             │
+│  ├── Implement flash_liquidate_and_sell                                     │
+│  └── Deploy to testnet                                                       │
 │                                                                              │
-│  Week 5: Mainnet (Gradual)                                                   │
-│  ├── Day 1-3: Deploy with low limits (10 SUI max flash loan)               │
+│  Week 11+: Mainnet Rollout (Gradual per phase)                              │
+│  ├── Day 1-3: Deploy with conservative limits                               │
 │  ├── Day 4-7: Monitor, increase limits if stable                            │
 │  └── Week 2+: Full rollout if no issues                                     │
-│                                                                              │
-│  Repeat for each phase...                                                    │
 │                                                                              │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
