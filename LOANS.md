@@ -249,18 +249,23 @@ sui move test
 sui move test --coverage
 ```
 
-## Future: DeepBook Integration
+## Future: DeepBook Integration (Simplified)
 
-Planned enhancements via DeepBook V3 (priority order):
+Planned enhancements via DeepBook V3:
 
-| Phase | Feature | User Impact |
-|-------|---------|-------------|
-| **Phase 1** ⭐ | Dynamic interest rates | ALL borrowers get fairer, market-driven rates |
-| **Phase 2** ⭐ | DeepBook liquidity (via BalanceManager) | 10x+ lending capacity |
-| **Phase 3** | Flash loan liquidations | Capital-free liquidations for anyone |
-| **Phase 4** | DEEP token rewards | Bonus yield for backers |
+| Phase | Feature | User Impact | Duration |
+|-------|---------|-------------|----------|
+| **Phase 1** | DeepBook Integration | 10x capacity + market rates | 2-3 weeks |
+| **Phase 2** | Flash Liquidations | Capital-efficient liquidations | 1 week |
+| **Phase 3** | DEEP Token Rewards | Bonus yield for backers | 1-2 weeks |
 
-**Key Simplification:** We chose DeepBook-only liquidity via `BalanceManager` instead of hybrid (Treasury + DeepBook) for simplicity. Tide deposits Treasury funds into the BalanceManager, which becomes the single source for all loans.
+**Total: 4-6 weeks** (simplified from 10+ weeks)
+
+**Key Simplifications:**
+- **No custom rate curves** — Use DeepBook's `borrow_rate()` directly
+- **DeepBook-only liquidity** — Single `BalanceManager` instead of hybrid
+- **Flash + Keep only** — Deferred Flash + Sell (requires bid system)
+- **Simplified DEEP distribution** — Epoch-based snapshots
 
 See [spec/deepbook-integration-v1.md](./spec/deepbook-integration-v1.md) for the full specification.
 

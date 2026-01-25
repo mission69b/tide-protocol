@@ -849,11 +849,15 @@ The following features have been added to expand the v1 foundation:
 - 21 tests (14 unit + 7 E2E)
 - See: `spec/self-paying-loans-v2.md`
 
-### Future: DeepBook Integration (Planned)
-- **Phase 1:** Dynamic interest rates ⭐ (ALL borrowers benefit)
-- **Phase 2:** DeepBook liquidity via BalanceManager ⭐ (10x+ capacity)
-- **Phase 3:** Flash loan liquidations (capital-free)
-- **Phase 4:** DEEP token rewards for backers
+### Future: DeepBook Integration (Simplified - 4-6 weeks)
+- **Phase 1:** DeepBook Integration (liquidity + market rates)
+- **Phase 2:** Flash Liquidations (keep only)
+- **Phase 3:** DEEP Token Rewards (epoch-based)
+
+**Removed/Deferred:**
+- Custom rate curves → Use DeepBook's `borrow_rate()` directly
+- Flash + Sell → Requires bid system (deferred)
+- Margin trading → Removed (too complex)
 - See: `spec/deepbook-integration-v1.md`
 
 ### Future: Marketplace Bid System (Planned)

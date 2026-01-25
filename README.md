@@ -578,14 +578,21 @@ See [LOANS.md](./LOANS.md) for:
 
 ### DeepBook Integration (Planned)
 
-See [spec/deepbook-integration-v1.md](./spec/deepbook-integration-v1.md) for planned enhancements:
+See [spec/deepbook-integration-v1.md](./spec/deepbook-integration-v1.md) for the full specification.
+
+**Simplified 3-Phase Approach (4-6 weeks):**
 
 | Phase | Feature | User Impact |
 |-------|---------|-------------|
-| **1** ⭐ | Dynamic interest rates | ALL borrowers get fairer rates |
-| **2** ⭐ | DeepBook liquidity (via BalanceManager) | 10x+ lending capacity |
-| **3** | Flash liquidations | Capital-free liquidations |
-| **4** | DEEP token rewards | Bonus yield for backers |
+| **1** | DeepBook Integration | 10x capacity + market rates |
+| **2** | Flash Liquidations | Capital-efficient liquidations |
+| **3** | DEEP Token Rewards | Bonus yield for backers |
+
+**Key Simplifications:**
+- Use DeepBook's `borrow_rate()` directly (no custom rate curves)
+- DeepBook-only liquidity via `BalanceManager` (no hybrid)
+- Flash + Keep only (Flash + Sell deferred)
+- Epoch-based DEEP distribution (simplified tracking)
 
 **Note:** Phase 3 has sub-phases: 3A (flash + keep), 3B (marketplace bid system), 3C (flash + sell).
 

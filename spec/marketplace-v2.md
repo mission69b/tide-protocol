@@ -1,10 +1,18 @@
 # Tide Marketplace v2 Specification
 
 > **Version:** v2.0
-> **Status:** 📝 DRAFT
+> **Status:** ⏸️ **DEFERRED** — Not required for initial DeepBook integration
 > **Author:** Tide Protocol
 > **Last Updated:** January 2026
 > **Depends On:** marketplace-v1.md, deepbook-integration-v1.md
+
+## Why Deferred?
+
+**Flash Liquidate + Keep** (Phase 2 of DeepBook integration) provides 90% of the value without requiring this bid system. True "zero-capital" liquidations via Flash + Sell are deferred.
+
+**When to revisit:** When there's proven demand for zero-capital liquidations.
+
+---
 
 ## Executive Summary
 
@@ -13,7 +21,7 @@ Marketplace v2 extends the existing marketplace with a **Bid System** (Buy Order
 2. **Instant selling** by matching against best bid
 3. **Capital-free flash liquidations** via DeepBook integration
 
-This upgrade is required for Phase 1C of the DeepBook integration (true capital-free liquidations).
+This upgrade would be required for Flash Liquidate + Sell (currently deferred).
 
 ---
 
