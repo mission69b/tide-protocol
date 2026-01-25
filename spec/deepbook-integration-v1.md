@@ -84,6 +84,22 @@ DeepBook V3 is Sui's native decentralized central limit order book (CLOB):
 | **Low Latency** | Leverages Sui's parallel execution |
 | **SDK** | TypeScript + Rust SDKs available |
 
+**Core Objects (from [DeepBook V3 Design](https://docs.sui.io/standards/deepbookv3/design)):**
+
+| Object | Purpose |
+|--------|---------|
+| **Pool** | Shared object managing order book, users, stakes for one market |
+| **PoolRegistry** | Prevents duplicate pools, manages versioning |
+| **BalanceManager** | Sources user funds across all pools (single instance per user) |
+
+**Pool Internal Architecture:**
+```
+Pool
+├── Book     (order matching, BigVector for bids/asks)
+├── State    (Governance, History, Account)
+└── Vault    (balance settlement, DeepPrice conversion)
+```
+
 **Source:** [DeepBook V3 Repository](https://github.com/MystenLabs/deepbookv3)
 
 ### 1.3 DeepBook Margin Overview
@@ -970,6 +986,20 @@ public fun calculate_blended_rate(
 
 Distribute DEEP tokens to Tide backers as additional yield.
 
+**DEEP Token Benefits (from [DeepBook Documentation](https://docs.sui.io/standards/deepbook)):**
+
+| Benefit | Details |
+|---------|---------|
+| **Fee Discount** | 20% lower trading fees when paying with DEEP vs input tokens |
+| **Taker Incentives** | Reduce fees to 0.25 bps (stable pairs) or 2.5 bps (volatile pairs) |
+| **Maker Incentives** | Rebates based on maker volume generated |
+| **Governance** | Propose and vote on trading parameters each epoch |
+
+**Staking Requirements:**
+- Users must stake DEEP to be eligible for taker/maker incentives
+- Voting power formula: `V = min(S, Vc) + max(√S - √Vc, 0)` where Vc = 100,000 DEEP
+- Quorum for proposals = 50% of total voting power
+
 ### 6.2 DEEP Acquisition Methods
 
 ```
@@ -1222,6 +1252,47 @@ tide_loans = "0x0"
 | `balance_manager::withdraw()` | Phase 3: Withdraw after repay |
 | `deep::transfer()` | Phase 4: Distribute DEEP rewards |
 
+### 8.4 BalanceManager Integration
+
+From the [DeepBook Design](https://docs.sui.io/standards/deepbookv3/design), the `BalanceManager` is a key concept:
+
+```move
+/// Tide's BalanceManager for DeepBook integration
+/// One per deployment, used for all pool interactions
+public struct TideBalanceManager has key {
+    id: UID,
+    /// DeepBook BalanceManager object ID
+    balance_manager_id: ID,
+    /// Authorized caller for operations
+    admin: address,
+}
+```
+
+**Usage Flow:**
+1. **Create BalanceManager** (once, at integration deployment)
+2. **Deposit** SUI/DEEP from Tide Treasury → BalanceManager
+3. **Execute trades** via Pool (BalanceManager sources funds)
+4. **Settle** after each operation (Vault updates BalanceManager)
+
+**Important:** A single `BalanceManager` can be used across all DeepBook pools, simplifying fund management.
+
+### 8.5 Flash Loan Mechanics
+
+Flash loan flow from DeepBook (atomic within one transaction):
+
+```
+1. pool::flash_loan(pool, amount)
+   → Returns (FlashLoan receipt, Coin<SUI>)
+
+2. Use borrowed funds (liquidate Tide loan, etc.)
+
+3. pool::repay_flash_loan(pool, flash_loan, repayment_coin)
+   → Must repay amount + fee
+   → FlashLoan receipt consumed (enforces repayment)
+```
+
+**Flash Loan Fee:** Determined by pool governance, typically ~0.05% - 0.1%
+
 ---
 
 ## 9. Risk Analysis
@@ -1399,10 +1470,16 @@ public fun disable_flash_liquidations(vault: &mut LoanVault, admin_cap: &AdminCa
 | Resource | Link |
 |----------|------|
 | Documentation | https://docs.sui.io/standards/deepbook |
+| Design | https://docs.sui.io/standards/deepbookv3/design |
+| Contract Information | https://docs.sui.io/standards/deepbookv3/contract-information |
+| Indexer | https://docs.sui.io/standards/deepbookv3-indexer |
+| SDK | https://docs.sui.io/standards/deepbookv3-sdk |
 | Margin Documentation | https://docs.sui.io/standards/deepbook-margin |
+| Margin Design | https://docs.sui.io/standards/deepbook-margin/design |
+| Margin Contract Info | https://docs.sui.io/standards/deepbook-margin/contract-information |
+| Margin Indexer | https://docs.sui.io/standards/deepbook-margin-indexer |
+| Margin SDK | https://docs.sui.io/standards/deepbook-margin-sdk |
 | GitHub Repository | https://github.com/MystenLabs/deepbookv3 |
-| DeepBook Package | https://github.com/MystenLabs/deepbookv3/tree/main/packages/deepbook |
-| Margin Package | https://github.com/MystenLabs/deepbookv3/tree/main/packages/deepbook_margin |
 
 ### A.1 Related Tide Specifications
 
@@ -1432,6 +1509,59 @@ public fun disable_flash_liquidations(vault: &mut LoanVault, admin_cap: &AdminCa
 | Borrow with DeepBook liquidity | ~150M MIST |
 | Claim DEEP rewards | ~50M MIST |
 
+### D. SDK & Indexer Integration
+
+**DeepBook SDK (from [SDK docs](https://docs.sui.io/standards/deepbookv3-sdk)):**
+
+The TypeScript SDK simplifies building PTBs for DeepBook interactions:
+
+```typescript
+import { DeepBookClient } from '@mysten/deepbook';
+
+// Initialize client
+const client = new DeepBookClient({
+  address: TIDE_BALANCE_MANAGER,
+  env: 'mainnet',
+});
+
+// Flash liquidation example
+const tx = new Transaction();
+const { flashLoan, coin } = client.flashLoan(tx, {
+  poolKey: 'SUI_USDC',
+  borrowAmount: loanPayoff,
+});
+// ... use coin for liquidation ...
+client.repayFlashLoan(tx, { flashLoan, coin: repaymentCoin });
+```
+
+**DeepBook Indexer (from [Indexer docs](https://docs.sui.io/standards/deepbookv3-indexer)):**
+
+Use the indexer for off-chain queries:
+
+| Endpoint | Use Case |
+|----------|----------|
+| `/pools` | Get available pools for flash loans |
+| `/pool/{id}/depth` | Check liquidity for large loans |
+| `/pool/{id}/trades` | Historical price data |
+| `/account/{address}/fills` | Track Tide's DeepBook activity |
+
+**Keeper Integration:**
+```typescript
+// Keeper bot for flash liquidations
+async function checkAndLiquidate() {
+  // 1. Query Tide indexer for unhealthy loans
+  const unhealthyLoans = await tideIndexer.getUnhealthyLoans();
+  
+  // 2. For each, check DeepBook liquidity
+  for (const loan of unhealthyLoans) {
+    const depth = await deepbookIndexer.getPoolDepth('SUI_USDC');
+    if (depth.available >= loan.payoff) {
+      // 3. Execute flash liquidation
+      await executeFlashLiquidation(loan);
+    }
+  }
+}
+
 ### D. Comparison with Competitors
 
 | Feature | Tide + DeepBook | Aave | Compound | NFTfi |
@@ -1442,6 +1572,32 @@ public fun disable_flash_liquidations(vault: &mut LoanVault, admin_cap: &AdminCa
 | Dynamic Rates | ✅ (Phase 2) | ✅ | ✅ | ❌ |
 | Multi-Token Rewards | ✅ (Phase 4) | ✅ | ✅ | ❌ |
 | Sui Native | ✅ | ❌ | ❌ | ❌ |
+
+---
+
+### E. Additional DeepBook Features for Future Consideration
+
+Based on the [DeepBook V3 Design](https://docs.sui.io/standards/deepbookv3/design), these features could be leveraged in future iterations:
+
+| Feature | Potential Use Case | Phase |
+|---------|-------------------|-------|
+| **BalanceManager** | Single fund source for all Tide-DeepBook interactions | Phase 3+ |
+| **Governance Participation** | Tide DAO votes on DeepBook fee parameters | v3 |
+| **Maker Rebates** | Tide earns rebates when providing liquidity | v3 |
+| **DeepPrice Oracle** | Use DeepBook's price data for collateral valuation | v3 |
+| **BigVector Order Book** | Direct market making on DeepBook with Tide treasury | v3 |
+| **Pool-Specific Staking** | Stake DEEP per pool for incentive eligibility | Phase 4+ |
+| **Whitelisted Pool** | Request whitelisted status for zero fees | v3 |
+
+**Governance Fee Bounds (from DeepBook docs):**
+
+| Pool Type | Taker (bps) | Maker (bps) |
+|-----------|-------------|-------------|
+| Volatile | 1-10 | 0-5 |
+| Stable | 0.1-1 | 0-0.5 |
+| Whitelisted | 0 | 0 |
+
+**Integration Consideration:** If Tide becomes a significant liquidity provider, we could apply for whitelisted pool status to eliminate trading fees entirely.
 
 ---
 
@@ -1461,3 +1617,4 @@ public fun disable_flash_liquidations(vault: &mut LoanVault, admin_cap: &AdminCa
 2. Prioritize phases
 3. Begin Phase 1 implementation
 4. Coordinate with DeepBook team for integration support
+5. Join DeepBook Discord for technical support
