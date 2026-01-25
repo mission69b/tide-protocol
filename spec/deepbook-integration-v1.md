@@ -177,33 +177,101 @@ deepbook_margin = { git = "https://github.com/MystenLabs/deepbookv3", subdir = "
 
 ### 3.1 Overview
 
-Enable capital-free liquidations using DeepBook's flash loan feature.
+Enable more efficient liquidations using DeepBook's flash loan feature. This phase is split into sub-phases:
+
+| Sub-Phase | Feature | Capital Required | Marketplace Changes |
+|-----------|---------|------------------|---------------------|
+| **1A** | Flash Liquidate + Keep | Repayment funds | None |
+| **1B** | Bid System | N/A | Add BuyOrder |
+| **1C** | Flash Liquidate + Sell | Zero (true capital-free) | Requires 1B |
 
 **Current Flow:**
-1. Liquidator needs upfront capital
+1. Liquidator needs upfront capital (full loan amount)
 2. Calls `liquidate()` with payment
 3. Receives collateral (SupporterPass)
-4. Sells on secondary market
+4. Sells on secondary market (manual, separate tx)
 5. Keeps profit
 
-**New Flow with Flash Loans:**
-1. Liquidator calls `flash_liquidate()` with NO capital
+**Phase 1A: Flash Liquidate + Keep**
+1. Liquidator calls `flash_liquidate_and_keep()` with repayment funds
+2. Contract flash borrows from DeepBook (for immediate capital)
+3. Uses borrowed funds to liquidate
+4. Liquidator provides repayment funds + keeps SupporterPass
+5. Repays flash loan from liquidator's funds
+
+**Phase 1C: Flash Liquidate + Sell (Requires Bid System)**
+1. Liquidator calls `flash_liquidate_and_sell()` with NO capital
 2. Contract flash borrows from DeepBook
 3. Uses borrowed funds to liquidate
-4. Sells SupporterPass on Tide Marketplace
-5. Repays flash loan + fee
+4. Instantly sells SupporterPass to best bid (marketplace v2)
+5. Repays flash loan + fee from sale proceeds
 6. Liquidator keeps profit
 
 ### 3.2 Architecture
 
+#### Phase 1A: Flash Liquidate + Keep (Simpler)
+
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                      FLASH LOAN LIQUIDATION FLOW                             │
+│               FLASH LOAN LIQUIDATION - PHASE 1A (KEEP PASS)                  │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                              │
 │  ┌─────────────┐                                                            │
-│  │ Liquidator  │ calls flash_liquidate()                                   │
-│  │ (no capital)│                                                            │
+│  │ Liquidator  │ calls flash_liquidate_and_keep()                          │
+│  │ (provides   │ + provides repayment funds                                │
+│  │  repayment) │                                                            │
+│  └──────┬──────┘                                                            │
+│         │                                                                    │
+│         ▼                                                                    │
+│  ┌─────────────────────────────────────────────────────────────────┐       │
+│  │ Step 1: Flash Borrow from DeepBook                              │       │
+│  │         (to have immediate capital for liquidation)             │       │
+│  │ deepbook::pool::flash_loan(pool, loan_amount)                   │       │
+│  │ → Returns: FlashLoan { coin: Coin<SUI>, ... }                   │       │
+│  └────────────────────────────┬────────────────────────────────────┘       │
+│                               │                                             │
+│                               ▼                                             │
+│  ┌─────────────────────────────────────────────────────────────────┐       │
+│  │ Step 2: Liquidate Tide Loan with borrowed funds                 │       │
+│  │                                                                  │       │
+│  │ loan_vault::liquidate(vault, loan_id, borrowed_sui)             │       │
+│  │ → Returns: SupporterPass (worth more than loan!)                │       │
+│  └────────────────────────────┬────────────────────────────────────┘       │
+│                               │                                             │
+│                               ▼                                             │
+│  ┌─────────────────────────────────────────────────────────────────┐       │
+│  │ Step 3: Repay Flash Loan with LIQUIDATOR'S funds                │       │
+│  │                                                                  │       │
+│  │ deepbook::pool::repay_flash_loan(pool, flash_loan, repayment)   │       │
+│  │ → Liquidator provides: loan_amount + flash_fee                  │       │
+│  └────────────────────────────┬────────────────────────────────────┘       │
+│                               │                                             │
+│                               ▼                                             │
+│  ┌─────────────────────────────────────────────────────────────────┐       │
+│  │ Step 4: Liquidator KEEPS the SupporterPass                      │       │
+│  │                                                                  │       │
+│  │ Liquidator paid: ~50 SUI + flash_fee                            │       │
+│  │ Liquidator got: Pass worth ~65 SUI (yield-bearing!)             │       │
+│  │ Instant profit: ~15 SUI (locked in earning asset)               │       │
+│  └─────────────────────────────────────────────────────────────────┘       │
+│                                                                              │
+│  BENEFIT: Liquidator now owns a yield-bearing SupporterPass!                │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+#### Phase 1C: Flash Liquidate + Sell (Requires Bid System)
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│              FLASH LOAN LIQUIDATION - PHASE 1C (INSTANT SELL)                │
+│                    (Requires Marketplace v2 Bid System)                      │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  ┌─────────────┐                                                            │
+│  │ Liquidator  │ calls flash_liquidate_and_sell()                          │
+│  │ (ZERO       │ (truly capital-free!)                                      │
+│  │  capital!)  │                                                            │
 │  └──────┬──────┘                                                            │
 │         │                                                                    │
 │         ▼                                                                    │
@@ -224,19 +292,19 @@ Enable capital-free liquidations using DeepBook's flash loan feature.
 │                               │                                             │
 │                               ▼                                             │
 │  ┌─────────────────────────────────────────────────────────────────┐       │
-│  │ Step 3: Sell SupporterPass                                      │       │
+│  │ Step 3: Instant Sell to Best Bid (Marketplace v2)               │       │
 │  │                                                                  │       │
-│  │ marketplace::instant_sell(pass) OR                              │       │
-│  │ liquidator takes pass (if profitable)                           │       │
-│  │ → Returns: Coin<SUI> (proceeds)                                 │       │
+│  │ marketplace::instant_sell(buy_order, pass)                      │       │
+│  │ → Matches against standing BuyOrder                             │       │
+│  │ → Returns: Coin<SUI> (bid_price - 5% fee)                       │       │
 │  └────────────────────────────┬────────────────────────────────────┘       │
 │                               │                                             │
 │                               ▼                                             │
 │  ┌─────────────────────────────────────────────────────────────────┐       │
-│  │ Step 4: Repay Flash Loan                                        │       │
+│  │ Step 4: Repay Flash Loan from sale proceeds                     │       │
 │  │                                                                  │       │
 │  │ deepbook::pool::repay_flash_loan(pool, flash_loan, proceeds)    │       │
-│  │ → Must repay: loan_amount + flash_fee                           │       │
+│  │ → Repay: loan_amount + flash_fee from proceeds                  │       │
 │  └────────────────────────────┬────────────────────────────────────┘       │
 │                               │                                             │
 │                               ▼                                             │
@@ -245,6 +313,8 @@ Enable capital-free liquidations using DeepBook's flash loan feature.
 │  │                                                                  │       │
 │  │ profit = proceeds - loan_amount - flash_fee                     │       │
 │  │ transfer::public_transfer(profit, liquidator)                   │       │
+│  │                                                                  │       │
+│  │ TRULY CAPITAL-FREE: Only gas required!                          │       │
 │  └─────────────────────────────────────────────────────────────────┘       │
 │                                                                              │
 └─────────────────────────────────────────────────────────────────────────────┘
@@ -262,85 +332,195 @@ use sui::sui::SUI;
 use deepbook::pool::{Pool, FlashLoan};
 use tide_loans::loan_vault::LoanVault;
 use tide_marketplace::marketplace::MarketplaceConfig;
+use tide_marketplace::buy_order::BuyOrder;
 use tide_core::listing::Listing;
 use tide_core::capital_vault::CapitalVault;
+use tide_core::supporter_pass::SupporterPass;
 
 // === Errors ===
 const EUnprofitableLiquidation: u64 = 1;
 const ELoanStillHealthy: u64 = 2;
 const EInsufficientProceeds: u64 = 3;
+const EInsufficientRepayment: u64 = 4;
+const EBidTooLow: u64 = 5;
 
 // === Events ===
 
-public struct FlashLiquidationExecuted has copy, drop {
+public struct FlashLiquidationKeep has copy, drop {
     loan_id: ID,
     liquidator: address,
     loan_amount: u64,
     flash_fee: u64,
-    proceeds: u64,
-    profit: u64,
+    pass_id: ID,
+    collateral_value: u64,
     epoch: u64,
 }
 
-// === Core Functions ===
+public struct FlashLiquidationSell has copy, drop {
+    loan_id: ID,
+    liquidator: address,
+    loan_amount: u64,
+    flash_fee: u64,
+    sale_price: u64,
+    marketplace_fee: u64,
+    profit: u64,
+    epoch: u64,
+}
+```
 
-/// Execute a flash loan liquidation with instant marketplace sale.
-/// Liquidator needs NO upfront capital.
+#### 3.3.2 Phase 1A: Flash Liquidate + Keep
+
+```move
+/// Phase 1A: Flash liquidate and keep the SupporterPass.
 /// 
-/// Requirements:
-/// - Loan must be unhealthy (health factor < 1.0)
-/// - Pass must be sellable on marketplace
-/// - Sale proceeds must cover loan + flash fee
-public fun flash_liquidate_and_sell(
-    // Tide objects
+/// The liquidator provides repayment funds and keeps the profitable pass.
+/// This is the simpler version that requires NO marketplace changes.
+/// 
+/// # Economics Example
+/// - Loan payoff: 50 SUI
+/// - Flash fee: ~0.3 SUI
+/// - Collateral value: 65 SUI
+/// - Liquidator pays: 50.3 SUI
+/// - Liquidator receives: Pass worth 65 SUI
+/// - Instant profit: ~15 SUI (in yield-bearing asset!)
+/// 
+/// # Why Use Flash Loan?
+/// - Liquidator may not have 50 SUI liquid
+/// - Flash loan provides instant capital
+/// - Atomic execution (no race conditions)
+public fun flash_liquidate_and_keep(
+    // Loan objects
     loan_vault: &mut LoanVault,
     loan_id: ID,
     listing: &Listing,
     capital_vault: &CapitalVault,
-    marketplace_config: &mut MarketplaceConfig,
-    treasury_vault: &mut TreasuryVault,
     // DeepBook objects
-    pool: &mut Pool<SUI, USDC>,  // Or appropriate pool
-    // Context
+    pool: &mut Pool<SUI, USDC>,
+    // Liquidator's repayment funds
+    repayment: Coin<SUI>,
     ctx: &mut TxContext,
-): Coin<SUI> {
-    // 1. Calculate loan payoff amount
-    let payoff_amount = loan_vault.outstanding_balance(loan_id);
+): SupporterPass {
+    // 1. Calculate payoff amount
+    let payoff = loan_vault.outstanding_balance(loan_id);
+    let flash_fee = pool.flash_loan_fee(payoff);
     
-    // 2. Flash borrow from DeepBook
-    let (flash_loan, borrowed_coin) = pool.flash_loan(payoff_amount, ctx);
+    // 2. Validate liquidator has enough for repayment
+    assert!(repayment.value() >= payoff + flash_fee, EInsufficientRepayment);
     
-    // 3. Liquidate the Tide loan
+    // 3. Flash borrow (to have immediate capital)
+    let (flash_loan, borrowed) = pool.flash_loan(payoff, ctx);
+    
+    // 4. Liquidate with borrowed funds
     let pass = loan_vault.liquidate(
         loan_id,
         listing,
         capital_vault,
-        borrowed_coin,
+        borrowed,
         ctx,
     );
     
-    // 4. Sell pass on Tide Marketplace (instant sale)
-    let (proceeds, _receipt, _change) = marketplace_config.instant_sell(
+    // 5. Repay flash loan with liquidator's funds
+    let repay_coin = repayment.split(payoff + flash_fee, ctx);
+    pool.repay_flash_loan(flash_loan, repay_coin);
+    
+    // 6. Return any excess repayment to liquidator
+    if (repayment.value() > 0) {
+        transfer::public_transfer(repayment, ctx.sender());
+    } else {
+        repayment.destroy_zero();
+    };
+    
+    // 7. Emit event
+    event::emit(FlashLiquidationKeep {
+        loan_id,
+        liquidator: ctx.sender(),
+        loan_amount: payoff,
+        flash_fee,
+        pass_id: object::id(&pass),
+        collateral_value: loan_vault.collateral_value(loan_id),
+        epoch: ctx.epoch(),
+    });
+    
+    // 8. Return pass to liquidator (they keep it!)
+    pass
+}
+```
+
+#### 3.3.3 Phase 1C: Flash Liquidate + Sell (Requires Marketplace v2)
+
+```move
+/// Phase 1C: Flash liquidate with instant sale to buy order.
+/// TRULY CAPITAL-FREE - liquidator only needs gas!
+/// 
+/// # Requirements
+/// - Marketplace v2 with Bid System deployed
+/// - Matching BuyOrder exists with sufficient bid
+/// 
+/// # Economics Example
+/// - Loan payoff: 50 SUI
+/// - Flash fee: ~0.3 SUI
+/// - Buy order bid: 60 SUI
+/// - Marketplace fee (5%): 3 SUI
+/// - Proceeds: 57 SUI
+/// - Repay: 50.3 SUI
+/// - Profit: 6.7 SUI (instant, liquid!)
+public fun flash_liquidate_and_sell(
+    // Loan objects
+    loan_vault: &mut LoanVault,
+    loan_id: ID,
+    listing: &Listing,
+    capital_vault: &CapitalVault,
+    // DeepBook objects
+    pool: &mut Pool<SUI, USDC>,
+    // Marketplace objects (v2 required)
+    marketplace_config: &mut MarketplaceConfig,
+    treasury_vault: &mut TreasuryVault,
+    buy_order: BuyOrder,  // Pre-found matching bid
+    ctx: &mut TxContext,
+): Coin<SUI> {
+    // 1. Calculate costs
+    let payoff = loan_vault.outstanding_balance(loan_id);
+    let flash_fee = pool.flash_loan_fee(payoff);
+    let marketplace_fee = marketplace_config.calculate_fee(buy_order.bid_price());
+    
+    // 2. Validate bid covers all costs
+    let min_bid_needed = payoff + flash_fee + marketplace_fee;
+    assert!(buy_order.bid_price() >= min_bid_needed, EBidTooLow);
+    
+    // 3. Flash borrow
+    let (flash_loan, borrowed) = pool.flash_loan(payoff, ctx);
+    
+    // 4. Liquidate
+    let pass = loan_vault.liquidate(
+        loan_id,
+        listing,
+        capital_vault,
+        borrowed,
+        ctx,
+    );
+    
+    // 5. Instant sell to the buy order
+    let (mut proceeds, _receipt) = marketplace::instant_sell(
+        marketplace_config,
         treasury_vault,
+        buy_order,
         pass,
         ctx,
     );
     
-    // 5. Repay flash loan
-    let flash_fee = pool.flash_loan_fee(payoff_amount);
-    let repayment = proceeds.split(payoff_amount + flash_fee, ctx);
-    pool.repay_flash_loan(flash_loan, repayment);
-    
-    // 6. Verify profitable
-    assert!(proceeds.value() > 0, EUnprofitableLiquidation);
+    // 6. Repay flash loan from sale proceeds
+    let repay_amount = payoff + flash_fee;
+    let repay_coin = proceeds.split(repay_amount, ctx);
+    pool.repay_flash_loan(flash_loan, repay_coin);
     
     // 7. Emit event
-    event::emit(FlashLiquidationExecuted {
+    event::emit(FlashLiquidationSell {
         loan_id,
         liquidator: ctx.sender(),
-        loan_amount: payoff_amount,
+        loan_amount: payoff,
         flash_fee,
-        proceeds: proceeds.value() + payoff_amount + flash_fee,
+        sale_price: buy_order.bid_price(),
+        marketplace_fee,
         profit: proceeds.value(),
         epoch: ctx.epoch(),
     });
@@ -348,70 +528,85 @@ public fun flash_liquidate_and_sell(
     // 8. Return profit to liquidator
     proceeds
 }
+```
 
-/// Flash liquidate but keep the SupporterPass.
-/// Useful when liquidator wants the pass (for yield).
-public fun flash_liquidate_and_keep(
-    loan_vault: &mut LoanVault,
-    loan_id: ID,
-    listing: &Listing,
-    capital_vault: &CapitalVault,
-    pool: &mut Pool<SUI, USDC>,
-    repayment_source: Coin<SUI>,  // User provides repayment funds
-    ctx: &mut TxContext,
-): SupporterPass {
-    // Similar flow but user repays flash loan from their funds
-    // and keeps the SupporterPass
-    // ...
-}
+#### 3.3.4 View Functions
 
+```move
 // === View Functions ===
 
-/// Calculate expected profit from flash liquidation.
-/// Returns None if liquidation would be unprofitable.
-public fun estimate_profit(
+/// Calculate expected profit from flash_liquidate_and_keep.
+public fun estimate_keep_profit(
     loan_vault: &LoanVault,
     loan_id: ID,
     pool: &Pool<SUI, USDC>,
-    marketplace_config: &MarketplaceConfig,
-): Option<u64> {
+): u64 {
     let payoff = loan_vault.outstanding_balance(loan_id);
     let flash_fee = pool.flash_loan_fee(payoff);
     let collateral_value = loan_vault.collateral_value(loan_id);
-    let marketplace_fee = marketplace_config.seller_fee_amount(collateral_value);
+    
+    // Profit = collateral value - (payoff + flash fee)
+    // Note: This is "paper profit" locked in the pass
+    if (collateral_value > payoff + flash_fee) {
+        collateral_value - payoff - flash_fee
+    } else {
+        0
+    }
+}
+
+/// Calculate expected profit from flash_liquidate_and_sell.
+/// Returns None if no profitable bid exists.
+public fun estimate_sell_profit(
+    loan_vault: &LoanVault,
+    loan_id: ID,
+    pool: &Pool<SUI, USDC>,
+    bid_price: u64,
+    marketplace_fee_bps: u64,
+): Option<u64> {
+    let payoff = loan_vault.outstanding_balance(loan_id);
+    let flash_fee = pool.flash_loan_fee(payoff);
+    let marketplace_fee = (bid_price * marketplace_fee_bps) / 10000;
     
     let total_cost = payoff + flash_fee + marketplace_fee;
     
-    if (collateral_value > total_cost) {
-        option::some(collateral_value - total_cost)
+    if (bid_price > total_cost) {
+        option::some(bid_price - total_cost)
     } else {
         option::none()
     }
 }
+
+/// Check if a liquidation would be profitable with a given bid.
+public fun is_profitable_with_bid(
+    loan_vault: &LoanVault,
+    loan_id: ID,
+    pool: &Pool<SUI, USDC>,
+    bid_price: u64,
+    marketplace_fee_bps: u64,
+): bool {
+    estimate_sell_profit(loan_vault, loan_id, pool, bid_price, marketplace_fee_bps).is_some()
+}
 ```
 
-#### 3.3.2 Required Marketplace Extension
+#### 3.3.5 Marketplace v2 Dependency
 
-Add `instant_sell` function to marketplace:
+For Phase 1C, the marketplace must support:
 
 ```move
-// In tide_marketplace::marketplace
+// In tide_marketplace::marketplace (v2)
 
-/// Instantly sell a SupporterPass at floor price.
-/// Used for flash liquidations.
+/// Instantly sell a SupporterPass to a matching buy order.
+/// See spec/marketplace-v2.md for full specification.
 public fun instant_sell(
     config: &mut MarketplaceConfig,
     treasury_vault: &mut TreasuryVault,
+    order: BuyOrder,
     pass: SupporterPass,
     ctx: &mut TxContext,
-): (Coin<SUI>, PurchaseReceipt, Coin<SUI>) {
-    // Get floor price from existing listings or oracle
-    let floor_price = config.get_floor_price(pass.listing_id());
-    
-    // Match with highest bid or lowest ask
-    // ...
-}
+): (Coin<SUI>, InstantSaleReceipt)
 ```
+
+See **[spec/marketplace-v2.md](./marketplace-v2.md)** for the full Bid System specification.
 
 ### 3.4 Benefits
 
@@ -1063,12 +1258,25 @@ tide_loans = "0x0"
 
 ### 10.1 Unit Tests
 
-**Phase 1: Flash Liquidations**
-- [ ] `test_flash_liquidate_profitable`
-- [ ] `test_flash_liquidate_unprofitable_fails`
-- [ ] `test_flash_liquidate_healthy_loan_fails`
-- [ ] `test_flash_loan_repayment`
-- [ ] `test_estimate_profit_accuracy`
+**Phase 1A: Flash Liquidate + Keep**
+- [ ] `test_flash_liquidate_and_keep_success`
+- [ ] `test_flash_liquidate_and_keep_insufficient_repayment_fails`
+- [ ] `test_flash_liquidate_and_keep_healthy_loan_fails`
+- [ ] `test_flash_liquidate_and_keep_returns_excess`
+- [ ] `test_estimate_keep_profit`
+
+**Phase 1B: Marketplace Bid System (see marketplace-v2.md)**
+- [ ] `test_create_buy_order`
+- [ ] `test_cancel_buy_order`
+- [ ] `test_instant_sell`
+- [ ] `test_instant_sell_fee_calculation`
+
+**Phase 1C: Flash Liquidate + Sell**
+- [ ] `test_flash_liquidate_and_sell_success`
+- [ ] `test_flash_liquidate_and_sell_bid_too_low_fails`
+- [ ] `test_flash_liquidate_and_sell_healthy_loan_fails`
+- [ ] `test_estimate_sell_profit`
+- [ ] `test_is_profitable_with_bid`
 
 **Phase 2: Dynamic Rates**
 - [ ] `test_rate_at_zero_utilization`
@@ -1111,13 +1319,23 @@ tide_loans = "0x0"
 
 ### 11.1 Timeline
 
-| Phase | Duration | Status |
-|-------|----------|--------|
-| Phase 1: Flash Liquidations | 2-3 weeks | 📋 Planned |
-| Phase 2: Dynamic Rates | 1-2 weeks | 📋 Planned |
-| Phase 3: Hybrid Liquidity | 3-4 weeks | 📋 Planned |
-| Phase 4: DEEP Rewards | 2-3 weeks | 📋 Planned |
-| Phase 5: Margin Trading | 8+ weeks | 🔮 Future |
+| Phase | Feature | Duration | Dependencies | Status |
+|-------|---------|----------|--------------|--------|
+| **1A** | Flash Liquidate + Keep | 1 week | DeepBook only | 📋 Planned |
+| **1B** | Marketplace Bid System | 2 weeks | Marketplace v2 | 📋 Planned |
+| **1C** | Flash Liquidate + Sell | 1 week | 1A + 1B | 📋 Planned |
+| **2** | Dynamic Interest Rates | 1 week | None | 📋 Planned |
+| **3** | Hybrid Liquidity | 3-4 weeks | Phase 2 | 📋 Planned |
+| **4** | DEEP Token Rewards | 2-3 weeks | None | 📋 Planned |
+| **5** | Margin Trading | 8+ weeks | All above | 🔮 Future |
+
+**Recommended Order:** 1A → 2 → 1B → 1C → 3 → 4
+
+This allows:
+- Quick win with Phase 1A (1 week)
+- Dynamic rates deployed early (good for users)
+- Bid system developed in parallel
+- Full capital-free liquidations last
 
 ### 11.2 Rollout Strategy
 
@@ -1185,6 +1403,14 @@ public fun disable_flash_liquidations(vault: &mut LoanVault, admin_cap: &AdminCa
 | GitHub Repository | https://github.com/MystenLabs/deepbookv3 |
 | DeepBook Package | https://github.com/MystenLabs/deepbookv3/tree/main/packages/deepbook |
 | Margin Package | https://github.com/MystenLabs/deepbookv3/tree/main/packages/deepbook_margin |
+
+### A.1 Related Tide Specifications
+
+| Spec | Purpose |
+|------|---------|
+| [marketplace-v2.md](./marketplace-v2.md) | Bid System for instant_sell (required for Phase 1C) |
+| [self-paying-loans-v2.md](./self-paying-loans-v2.md) | Current loans architecture |
+| [tide-core-v1.md](./tide-core-v1.md) | Core protocol specification |
 
 ### B. Glossary
 
