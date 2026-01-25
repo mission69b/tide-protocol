@@ -850,10 +850,10 @@ The following features have been added to expand the v1 foundation:
 - See: `spec/self-paying-loans-v2.md`
 
 ### Future: DeepBook Integration (Planned)
-- Flash loan liquidations (Phase 1)
-- Dynamic interest rates (Phase 2)
-- Hybrid liquidity (Phase 3)
-- DEEP token rewards (Phase 4)
+- **Phase 1:** Dynamic interest rates ⭐ (ALL borrowers benefit)
+- **Phase 2:** DeepBook liquidity via BalanceManager ⭐ (10x+ capacity)
+- **Phase 3:** Flash loan liquidations (capital-free)
+- **Phase 4:** DEEP token rewards for backers
 - See: `spec/deepbook-integration-v1.md`
 
 ### Future: Marketplace Bid System (Planned)

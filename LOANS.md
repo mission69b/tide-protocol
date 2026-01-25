@@ -251,11 +251,16 @@ sui move test --coverage
 
 ## Future: DeepBook Integration
 
-Planned enhancements via DeepBook V3:
-- **Phase 1:** Flash loan liquidations (capital-free)
-- **Phase 2:** Dynamic interest rates (utilization-based)
-- **Phase 3:** Hybrid liquidity (source from DeepBook pools)
-- **Phase 4:** DEEP token rewards for backers
+Planned enhancements via DeepBook V3 (priority order):
+
+| Phase | Feature | User Impact |
+|-------|---------|-------------|
+| **Phase 1** ⭐ | Dynamic interest rates | ALL borrowers get fairer, market-driven rates |
+| **Phase 2** ⭐ | DeepBook liquidity (via BalanceManager) | 10x+ lending capacity |
+| **Phase 3** | Flash loan liquidations | Capital-free liquidations for anyone |
+| **Phase 4** | DEEP token rewards | Bonus yield for backers |
+
+**Key Simplification:** We chose DeepBook-only liquidity via `BalanceManager` instead of hybrid (Treasury + DeepBook) for simplicity. Tide deposits Treasury funds into the BalanceManager, which becomes the single source for all loans.
 
 See [spec/deepbook-integration-v1.md](./spec/deepbook-integration-v1.md) for the full specification.
 

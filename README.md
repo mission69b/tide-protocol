@@ -579,12 +579,15 @@ See [LOANS.md](./LOANS.md) for:
 ### DeepBook Integration (Planned)
 
 See [spec/deepbook-integration-v1.md](./spec/deepbook-integration-v1.md) for planned enhancements:
-- **Phase 1A:** Flash liquidate + keep (liquidator keeps pass)
-- **Phase 1B:** Marketplace bid system ([spec/marketplace-v2.md](./spec/marketplace-v2.md))
-- **Phase 1C:** Flash liquidate + sell (true capital-free liquidations)
-- **Phase 2:** Dynamic interest rates (utilization-based)
-- **Phase 3:** Hybrid liquidity (source from DeepBook pools)
-- **Phase 4:** DEEP token rewards for backers
+
+| Phase | Feature | User Impact |
+|-------|---------|-------------|
+| **1** ⭐ | Dynamic interest rates | ALL borrowers get fairer rates |
+| **2** ⭐ | DeepBook liquidity (via BalanceManager) | 10x+ lending capacity |
+| **3** | Flash liquidations | Capital-free liquidations |
+| **4** | DEEP token rewards | Bonus yield for backers |
+
+**Note:** Phase 3 has sub-phases: 3A (flash + keep), 3B (marketplace bid system), 3C (flash + sell).
 
 ## Protocol Integrations
 

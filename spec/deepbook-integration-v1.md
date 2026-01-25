@@ -14,7 +14,7 @@ This specification outlines the integration of [DeepBook V3](https://docs.sui.io
 | Priority | Feature | User Impact | Timeline |
 |----------|---------|-------------|----------|
 | 1️⃣ | **Dynamic Interest Rates** | ALL borrowers get fairer rates | 1 week |
-| 2️⃣ | **Hybrid Liquidity** | 10x+ lending capacity | 3-4 weeks |
+| 2️⃣ | **DeepBook Liquidity** | 10x+ lending capacity | 3-4 weeks |
 | 3️⃣ | **Flash Liquidations** | Capital-free liquidations | 1-2 weeks |
 | 4️⃣ | **DEEP Token Rewards** | Bonus yield for backers | 2-3 weeks |
 
@@ -22,11 +22,12 @@ This specification outlines the integration of [DeepBook V3](https://docs.sui.io
 
 | Benefit | Impact |
 |---------|--------|
-| **10x+ lending capacity** | Hybrid liquidity from DeepBook pools |
+| **10x+ lending capacity** | DeepBook liquidity via BalanceManager |
 | **Market-driven interest rates** | Fairer for borrowers, competitive with DeFi |
 | **Capital-free liquidations** | Lower barrier for liquidators |
 | **Additional yield** | DEEP tokens for backers |
-| **First-mover advantage** | Early DeepBook Margin adopter
+| **Simplified architecture** | DeepBook-only (no hybrid blending) |
+| **First-mover advantage** | Early DeepBook integrator on Sui |
 
 ---
 
@@ -34,16 +35,19 @@ This specification outlines the integration of [DeepBook V3](https://docs.sui.io
 
 1. [Background](#1-background)
 2. [Integration Architecture](#2-integration-architecture)
-3. [Phase 1: Dynamic Interest Rates](#3-phase-1-dynamic-interest-rates) ⭐ HIGH VALUE
-4. [Phase 2: Hybrid Liquidity](#4-phase-2-hybrid-liquidity) ⭐ HIGH VALUE
-5. [Phase 3: Flash Loan Liquidations](#5-phase-3-flash-loan-liquidations)
-6. [Phase 4: DEEP Token Rewards](#6-phase-4-deep-token-rewards)
-7. [Phase 5: Margin Trading Extension](#7-phase-5-margin-trading-extension)
+3. [Flash Loan Liquidations](#3-phase-3-flash-loan-liquidations) (Phase 3)
+4. [Dynamic Interest Rates](#4-phase-1-dynamic-interest-rates) ⭐ Phase 1 - HIGH VALUE
+5. [DeepBook Liquidity](#5-phase-2-deepbook-liquidity) ⭐ Phase 2 - HIGH VALUE
+6. [DEEP Token Rewards](#6-phase-4-deep-token-rewards) (Phase 4)
+7. [Margin Trading Extension](#7-phase-5-margin-trading-extension) (Phase 5 - Future)
 8. [Technical Implementation](#8-technical-implementation)
 9. [Risk Analysis](#9-risk-analysis)
 10. [Testing Requirements](#10-testing-requirements)
 11. [Deployment Plan](#11-deployment-plan)
 12. [Appendix](#12-appendix)
+
+> **Note:** Sections 3-6 contain detailed specs for each feature. The **recommended implementation order** is:
+> Phase 1 (§4) → Phase 2 (§5) → Phase 3 (§3) → Phase 4 (§6)
 
 ---
 
@@ -174,12 +178,12 @@ DeepBook Margin extends DeepBook with leveraged trading:
 
 ### 2.2 New Modules
 
-| Module | Package | Purpose |
-|--------|---------|---------|
-| `deepbook_bridge.move` | `tide_loans` | Bridge to DeepBook for flash loans, liquidity |
-| `flash_liquidator.move` | `tide_loans` | Capital-free liquidation using flash loans |
-| `dynamic_rates.move` | `tide_loans` | Utilization-based interest rate calculation |
-| `deep_rewards.move` | `tide_core` | DEEP token distribution to backers |
+| Module | Package | Phase | Purpose |
+|--------|---------|-------|---------|
+| `dynamic_rates.move` | `tide_loans` | Phase 1 ⭐ | Utilization-based interest rate calculation |
+| `lending_pool.move` | `tide_loans` | Phase 2 ⭐ | DeepBook BalanceManager wrapper for liquidity |
+| `flash_liquidator.move` | `tide_loans` | Phase 3 | Capital-free liquidation using flash loans |
+| `deep_rewards.move` | `tide_core` | Phase 4 | DEEP token distribution to backers |
 
 ### 2.3 Package Dependencies
 
@@ -196,7 +200,7 @@ deepbook_margin = { git = "https://github.com/MystenLabs/deepbookv3", subdir = "
 
 ---
 
-## 3. Phase 1: Flash Loan Liquidations
+## 3. Phase 3: Flash Loan Liquidations
 
 ### 3.1 Overview
 
@@ -651,7 +655,7 @@ See **[spec/marketplace-v2.md](./marketplace-v2.md)** for the full Bid System sp
 
 ---
 
-## 4. Phase 2: Dynamic Interest Rates
+## 4. Phase 1: Dynamic Interest Rates ⭐ HIGH VALUE
 
 ### 4.1 Overview
 
@@ -818,172 +822,247 @@ public(package) fun accrue_interest(
 
 ---
 
-## 5. Phase 3: Hybrid Liquidity
+## 5. Phase 2: DeepBook Liquidity (via BalanceManager) ⭐ HIGH VALUE
 
 ### 5.1 Overview
 
-Source additional lending liquidity from DeepBook pools when Tide treasury is insufficient.
+Source ALL lending liquidity from DeepBook via a single `BalanceManager`.
+
+> **Design Decision:** We chose DeepBook-Only over Hybrid (Treasury + DeepBook) for simplicity.
+
+| Approach | Complexity | Code Size | Recommendation |
+|----------|------------|-----------|----------------|
+| Hybrid (Treasury + DeepBook) | High | ~500 LOC | ❌ Over-engineered |
+| DeepBook-Only via BalanceManager | Low | ~200 LOC | ✅ **Recommended** |
+
+**Why DeepBook-Only is Better:**
+1. **Simpler architecture** — One fund source, one interface
+2. **Less code** — No blending, no waterfall repayment logic
+3. **Market-driven rates** — DeepBook handles rate calculation
+4. **Scalable** — Grows with DeepBook's liquidity pools
+5. **Battle-tested** — Leverages DeepBook's proven infrastructure
+
+**Tide Treasury Role (Updated):**
+- Tide deposits Treasury funds INTO the BalanceManager
+- BalanceManager becomes the single source for all loans
+- Treasury acts as "seed liquidity" that earns DeepBook rates
+- Tide can withdraw from BalanceManager when needed
 
 ### 5.2 Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                         HYBRID LIQUIDITY MODEL                               │
+│              DEEPBOOK-ONLY LIQUIDITY (via BalanceManager)                    │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                              │
-│  User requests: 1000 SUI loan                                               │
+│  ┌─────────────────────────────────────────────────────────────────┐       │
+│  │                    SETUP (One-time)                             │       │
+│  │                                                                  │       │
+│  │  1. Tide creates BalanceManager on DeepBook                     │       │
+│  │  2. Tide deposits Treasury funds → BalanceManager               │       │
+│  │  3. BalanceManager is now the liquidity source                  │       │
+│  └─────────────────────────────────────────────────────────────────┘       │
 │                                                                              │
 │  ┌─────────────────────────────────────────────────────────────────┐       │
-│  │ LoanVault Liquidity Check                                       │       │
+│  │                    BORROW FLOW                                   │       │
 │  │                                                                  │       │
-│  │ Tide Treasury: 200 SUI available                                │       │
-│  │ Shortfall: 800 SUI needed                                       │       │
-│  └────────────────────────────┬────────────────────────────────────┘       │
-│                               │                                             │
-│                               ▼                                             │
+│  │  User requests: 1000 SUI loan                                   │       │
+│  │         │                                                        │       │
+│  │         ▼                                                        │       │
+│  │  ┌─────────────────────────────────────────────────────────┐   │       │
+│  │  │ TideLendingPool (wrapper)                                │   │       │
+│  │  │                                                          │   │       │
+│  │  │ 1. Check BalanceManager has funds                       │   │       │
+│  │  │ 2. balance_manager::withdraw(1000 SUI)                  │   │       │
+│  │  │ 3. Issue loan to user                                   │   │       │
+│  │  │ 4. Record loan details                                  │   │       │
+│  │  └─────────────────────────────────────────────────────────┘   │       │
+│  └─────────────────────────────────────────────────────────────────┘       │
+│                                                                              │
 │  ┌─────────────────────────────────────────────────────────────────┐       │
-│  │ DeepBook Liquidity Bridge                                       │       │
+│  │                    REPAY FLOW                                    │       │
 │  │                                                                  │       │
-│  │ 1. Query DeepBook pools for best rate                           │       │
-│  │ 2. Borrow 800 SUI from DeepBook                                 │       │
-│  │ 3. Combine with Tide's 200 SUI                                  │       │
-│  │ 4. Issue loan to user                                           │       │
-│  └────────────────────────────┬────────────────────────────────────┘       │
-│                               │                                             │
-│                               ▼                                             │
-│  ┌─────────────────────────────────────────────────────────────────┐       │
-│  │ Loan Record                                                      │       │
-│  │                                                                  │       │
-│  │ • Total Principal: 1000 SUI                                     │       │
-│  │ • Tide Portion: 200 SUI (earns Tide rate)                       │       │
-│  │ • DeepBook Portion: 800 SUI (earns DB rate)                     │       │
-│  │ • Blended Rate: weighted average                                │       │
-│  └────────────────────────────┬────────────────────────────────────┘       │
-│                               │                                             │
-│                               ▼                                             │
-│  ┌─────────────────────────────────────────────────────────────────┐       │
-│  │ Repayment Distribution                                          │       │
-│  │                                                                  │       │
-│  │ When rewards come in:                                           │       │
-│  │ 1. Pay DeepBook interest first (priority)                       │       │
-│  │ 2. Pay DeepBook principal                                       │       │
-│  │ 3. Pay Tide interest                                            │       │
-│  │ 4. Pay Tide principal                                           │       │
-│  │                                                                  │       │
-│  │ → DeepBook gets repaid faster (reduces external debt)           │       │
+│  │  Rewards come in (from SupporterPass)                           │       │
+│  │         │                                                        │       │
+│  │         ▼                                                        │       │
+│  │  ┌─────────────────────────────────────────────────────────┐   │       │
+│  │  │ TideLendingPool                                          │   │       │
+│  │  │                                                          │   │       │
+│  │  │ 1. Calculate interest owed                               │   │       │
+│  │  │ 2. balance_manager::deposit(repayment)                  │   │       │
+│  │  │ 3. Update loan record                                   │   │       │
+│  │  │                                                          │   │       │
+│  │  │ → No waterfall, no blending. Just deposit and done.     │   │       │
+│  │  └─────────────────────────────────────────────────────────┘   │       │
 │  └─────────────────────────────────────────────────────────────────┘       │
 │                                                                              │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### 5.3 Technical Specification
+### 5.3 Technical Specification (Simplified)
 
 ```move
-module tide_loans::deepbook_bridge;
+module tide_loans::lending_pool;
 
-use deepbook::pool::Pool;
-use deepbook::balance_manager::BalanceManager;
+use deepbook::balance_manager::{Self, BalanceManager};
+use deepbook::pool::{Self, Pool};
 use sui::coin::Coin;
 use sui::sui::SUI;
 
 // === Structs ===
 
-/// Tracks liquidity borrowed from DeepBook
-public struct DeepBookLoan has store {
-    pool_id: ID,
-    principal: u64,
-    interest_accrued: u64,
-    borrowed_at: u64,
-    rate_at_borrow: u64,
+/// Tide's wrapper around DeepBook BalanceManager
+/// Single source of truth for all lending liquidity
+public struct TideLendingPool has key {
+    id: UID,
+    /// DeepBook BalanceManager - single fund source
+    balance_manager_id: ID,
+    /// Total deposited by Tide Treasury
+    treasury_deposit: u64,
+    /// Total currently lent out
+    outstanding: u64,
+    /// Maximum lending exposure
+    max_exposure: u64,
+    /// Admin controls
+    admin: address,
+    /// Pause flag
+    paused: bool,
 }
 
-/// Bridge configuration
-public struct BridgeConfig has store {
-    /// Maximum amount to borrow from DeepBook
-    max_deepbook_exposure: u64,
-    /// Preferred pools in order
-    preferred_pools: vector<ID>,
-    /// Minimum spread over DeepBook rate
-    min_spread_bps: u64,
-    /// Whether bridge is enabled
-    enabled: bool,
+/// Config for the lending pool
+public struct LendingConfig has store {
+    /// Minimum loan amount
+    min_loan: u64,
+    /// Maximum single loan amount  
+    max_loan: u64,
+    /// Interest rate (from DeepBook or override)
+    rate_override: Option<u64>,
 }
 
-// === Functions ===
+// === Admin Functions ===
 
-/// Borrow liquidity from DeepBook to supplement Tide treasury.
-public fun borrow_from_deepbook(
-    vault: &mut LoanVault,
-    pool: &mut Pool<SUI, USDC>,
+/// Create lending pool with BalanceManager
+public fun create_pool(
+    admin_cap: &AdminCap,
+    ctx: &mut TxContext,
+): TideLendingPool {
+    let balance_manager = balance_manager::new(ctx);
+    let bm_id = object::id(&balance_manager);
+    
+    // Transfer BalanceManager to be managed by this module
+    transfer::public_share_object(balance_manager);
+    
+    TideLendingPool {
+        id: object::new(ctx),
+        balance_manager_id: bm_id,
+        treasury_deposit: 0,
+        outstanding: 0,
+        max_exposure: 1_000_000_000_000, // 1M SUI default
+        admin: ctx.sender(),
+        paused: false,
+    }
+}
+
+/// Deposit Treasury funds for lending
+public fun deposit_liquidity(
+    pool: &mut TideLendingPool,
+    balance_manager: &mut BalanceManager,
+    admin_cap: &AdminCap,
+    coin: Coin<SUI>,
+) {
+    let amount = coin.value();
+    balance_manager::deposit(balance_manager, coin);
+    pool.treasury_deposit = pool.treasury_deposit + amount;
+}
+
+/// Withdraw Treasury funds
+public fun withdraw_liquidity(
+    pool: &mut TideLendingPool,
+    balance_manager: &mut BalanceManager,
+    admin_cap: &AdminCap,
     amount: u64,
     ctx: &mut TxContext,
 ): Coin<SUI> {
-    assert!(vault.bridge_config.enabled, EBridgeDisabled);
-    assert!(
-        vault.deepbook_exposure() + amount <= vault.bridge_config.max_deepbook_exposure,
-        EExceedsMaxExposure,
-    );
+    // Can only withdraw unused funds
+    let available = pool.treasury_deposit - pool.outstanding;
+    assert!(amount <= available, EInsufficientLiquidity);
     
-    // Get current DeepBook borrow rate
-    let db_rate = pool.borrow_rate();
-    
-    // Borrow from DeepBook
-    let borrowed = pool.borrow(amount, ctx);
-    
-    // Record the loan
-    let db_loan = DeepBookLoan {
-        pool_id: object::id(pool),
-        principal: amount,
-        interest_accrued: 0,
-        borrowed_at: ctx.epoch_timestamp_ms(),
-        rate_at_borrow: db_rate,
-    };
-    
-    vault.deepbook_loans.push_back(db_loan);
-    
-    borrowed
+    pool.treasury_deposit = pool.treasury_deposit - amount;
+    balance_manager::withdraw(balance_manager, amount, ctx)
 }
 
-/// Repay DeepBook loan when Tide loan is repaid.
-public fun repay_to_deepbook(
-    vault: &mut LoanVault,
-    pool: &mut Pool<SUI, USDC>,
-    amount: Coin<SUI>,
+// === Lending Functions ===
+
+/// Borrow from the pool (called internally by LoanVault)
+public(package) fun borrow(
+    pool: &mut TideLendingPool,
+    balance_manager: &mut BalanceManager,
+    amount: u64,
     ctx: &mut TxContext,
-) {
-    // Find matching DeepBook loan
-    // Apply payment
-    // ...
+): Coin<SUI> {
+    assert!(!pool.paused, EPaused);
+    assert!(pool.outstanding + amount <= pool.max_exposure, EExceedsExposure);
+    
+    let coin = balance_manager::withdraw(balance_manager, amount, ctx);
+    pool.outstanding = pool.outstanding + amount;
+    coin
 }
 
-/// Calculate blended interest rate for a loan.
-public fun calculate_blended_rate(
-    tide_portion: u64,
-    tide_rate: u64,
-    deepbook_portion: u64,
-    deepbook_rate: u64,
-): u64 {
-    let total = tide_portion + deepbook_portion;
-    if (total == 0) {
-        return 0
-    };
-    
-    let weighted = ((tide_portion as u128) * (tide_rate as u128)
-        + (deepbook_portion as u128) * (deepbook_rate as u128))
-        / (total as u128);
-    
-    (weighted as u64)
+/// Repay to the pool
+public(package) fun repay(
+    pool: &mut TideLendingPool,
+    balance_manager: &mut BalanceManager,
+    coin: Coin<SUI>,
+) {
+    let amount = coin.value();
+    balance_manager::deposit(balance_manager, coin);
+    pool.outstanding = pool.outstanding - amount;
+}
+
+// === View Functions ===
+
+/// Get available liquidity
+public fun available_liquidity(pool: &TideLendingPool): u64 {
+    pool.treasury_deposit - pool.outstanding
+}
+
+/// Get current utilization (0-10000 bps)
+public fun utilization_bps(pool: &TideLendingPool): u64 {
+    if (pool.treasury_deposit == 0) { return 0 };
+    (pool.outstanding * 10000) / pool.treasury_deposit
+}
+
+/// Get interest rate (from DeepBook pool)
+public fun get_rate(deepbook_pool: &Pool<SUI, USDC>): u64 {
+    pool::borrow_rate(deepbook_pool)
 }
 ```
 
+**Key Simplifications:**
+- No `DeepBookLoan` tracking per-loan source
+- No `calculate_blended_rate` — just use DeepBook rate
+- No waterfall repayment — single deposit destination
+- ~120 LOC instead of ~500 LOC
+
 ### 5.4 Benefits
 
-| Metric | Treasury Only | Hybrid |
-|--------|---------------|--------|
-| Max Lending Capacity | Treasury allocation | Essentially unlimited |
-| Capital Efficiency | Low | High |
-| Rate Competitiveness | Fixed | Market-competitive |
-| Risk Diversification | Concentrated | Distributed |
+| Metric | Before (Treasury Only) | After (DeepBook via BalanceManager) |
+|--------|------------------------|-------------------------------------|
+| Max Lending Capacity | Limited to Treasury | Scales with Treasury deposit |
+| Rate Calculation | Custom logic | DeepBook handles it |
+| Code Complexity | Medium | **Low** |
+| Capital Efficiency | Low | High (market rates) |
+| Maintenance | Custom rate curves | Leverage DeepBook's battle-tested code |
+| Dependency | None | DeepBook (acceptable tradeoff) |
+
+### 5.5 Risk Mitigation
+
+| Risk | Mitigation |
+|------|------------|
+| **DeepBook downtime** | Pause lending; loans continue with fixed rate |
+| **Rate manipulation** | Rate cap in TideLendingPool |
+| **Liquidity drain** | `max_exposure` limit |
+| **Smart contract bug** | Deposit limits, gradual rollout |
 
 ---
 
@@ -1213,15 +1292,15 @@ contracts/loans/
 ├── Move.toml
 ├── sources/
 │   ├── loan_vault.move          # Core (existing)
-│   ├── flash_liquidator.move    # Phase 1: Flash loans
-│   ├── dynamic_rates.move       # Phase 2: Utilization rates
-│   ├── deepbook_bridge.move     # Phase 3: Hybrid liquidity
-│   └── deep_rewards.move        # Phase 4: DEEP tokens
+│   ├── dynamic_rates.move       # Phase 1: Utilization-based rates ⭐
+│   ├── lending_pool.move        # Phase 2: DeepBook liquidity via BalanceManager ⭐
+│   ├── flash_liquidator.move    # Phase 3: Flash loan liquidations
+│   └── deep_rewards.move        # Phase 4: DEEP token distribution
 └── tests/
     ├── loan_vault_tests.move
-    ├── flash_liquidator_tests.move
     ├── dynamic_rates_tests.move
-    ├── deepbook_bridge_tests.move
+    ├── lending_pool_tests.move
+    ├── flash_liquidator_tests.move
     └── integration_tests.move
 ```
 
@@ -1250,14 +1329,15 @@ tide_loans = "0x0"
 
 ### 8.3 Key DeepBook Functions to Use
 
-| DeepBook Function | Tide Usage |
-|-------------------|------------|
-| `pool::flash_loan()` | Phase 1: Borrow for liquidation |
-| `pool::repay_flash_loan()` | Phase 1: Repay after liquidation |
-| `pool::borrow_rate()` | Phase 2: Get market rate |
-| `balance_manager::deposit()` | Phase 3: Deposit for borrowing |
-| `balance_manager::withdraw()` | Phase 3: Withdraw after repay |
-| `deep::transfer()` | Phase 4: Distribute DEEP rewards |
+| DeepBook Function | Tide Usage | Phase |
+|-------------------|------------|-------|
+| `pool::borrow_rate()` | Get market interest rate | Phase 1 ⭐ |
+| `balance_manager::new()` | Create lending pool | Phase 2 ⭐ |
+| `balance_manager::deposit()` | Deposit treasury funds | Phase 2 ⭐ |
+| `balance_manager::withdraw()` | Lend to borrowers / admin withdraw | Phase 2 ⭐ |
+| `pool::flash_loan()` | Borrow for liquidation | Phase 3 |
+| `pool::repay_flash_loan()` | Repay after liquidation | Phase 3 |
+| `deep::transfer()` | Distribute DEEP rewards | Phase 4 |
 
 ### 8.4 BalanceManager Integration
 
@@ -1336,7 +1416,7 @@ Flash loan flow from DeepBook (atomic within one transaction):
 
 ### 10.1 Unit Tests (Priority Order)
 
-**Phase 1: Dynamic Rates** ⭐ HIGH VALUE
+**Phase 1: Dynamic Interest Rates** ⭐ HIGH VALUE
 - [ ] `test_rate_at_zero_utilization`
 - [ ] `test_rate_at_optimal_utilization`
 - [ ] `test_rate_above_optimal_utilization`
@@ -1344,12 +1424,16 @@ Flash loan flow from DeepBook (atomic within one transaction):
 - [ ] `test_rate_cap`
 - [ ] `test_interest_accrual_with_dynamic_rate`
 
-**Phase 2: Hybrid Liquidity** ⭐ HIGH VALUE
-- [ ] `test_borrow_from_deepbook`
-- [ ] `test_repay_to_deepbook`
-- [ ] `test_blended_rate_calculation`
+**Phase 2: DeepBook Liquidity (via BalanceManager)** ⭐ HIGH VALUE
+- [ ] `test_create_lending_pool`
+- [ ] `test_deposit_liquidity`
+- [ ] `test_withdraw_liquidity`
+- [ ] `test_borrow_from_pool`
+- [ ] `test_repay_to_pool`
+- [ ] `test_available_liquidity`
+- [ ] `test_utilization_bps`
 - [ ] `test_exposure_limits`
-- [ ] `test_waterfall_repayment`
+- [ ] `test_pause_lending`
 
 **Phase 3A: Flash Liquidate + Keep**
 - [ ] `test_flash_liquidate_and_keep_success`
@@ -1371,7 +1455,7 @@ Flash loan flow from DeepBook (atomic within one transaction):
 - [ ] `test_estimate_sell_profit`
 - [ ] `test_is_profitable_with_bid`
 
-**Phase 4: DEEP Rewards**
+**Phase 4: DEEP Token Rewards**
 - [ ] `test_deposit_deep`
 - [ ] `test_distribute_deep_to_listing`
 - [ ] `test_claim_deep`
@@ -1379,10 +1463,11 @@ Flash loan flow from DeepBook (atomic within one transaction):
 
 ### 10.2 Integration Tests
 
-- [ ] Full flash liquidation with real DeepBook pool
-- [ ] Borrow → harvest → repay with dynamic rates
-- [ ] Hybrid loan with both Tide and DeepBook liquidity
-- [ ] DEEP reward distribution across multiple backers
+- [ ] Borrow → harvest → repay with dynamic rates (Phase 1)
+- [ ] Full lending pool lifecycle (deposit → borrow → repay → withdraw) (Phase 2)
+- [ ] Flash liquidation with real DeepBook pool (Phase 3)
+- [ ] DEEP reward distribution across multiple backers (Phase 4)
+- [ ] E2E: User borrows with dynamic rate, rewards auto-repay, liquidator flash-liquidates unhealthy loan
 
 ### 10.3 Stress Tests
 
@@ -1441,10 +1526,10 @@ Flash loan flow from DeepBook (atomic within one transaction):
 │  ├── Write unit tests                                                        │
 │  └── Deploy to testnet                                                       │
 │                                                                              │
-│  Week 2-5: Phase 2 - Hybrid Liquidity ⭐ HIGH VALUE                          │
-│  ├── Implement deepbook_bridge.move                                         │
-│  ├── BalanceManager integration                                             │
-│  ├── Waterfall repayment logic                                              │
+│  Week 2-5: Phase 2 - DeepBook Liquidity ⭐ HIGH VALUE                        │
+│  ├── Implement lending_pool.move (TideLendingPool wrapper)                  │
+│  ├── Create BalanceManager integration                                      │
+│  ├── Deposit/withdraw/borrow/repay functions                                │
 │  ├── Exposure limits and safety checks                                      │
 │  └── Deploy to testnet                                                       │
 │                                                                              │
@@ -1613,7 +1698,7 @@ Based on the [DeepBook V3 Design](https://docs.sui.io/standards/deepbookv3/desig
 
 | Feature | Potential Use Case | Phase |
 |---------|-------------------|-------|
-| **BalanceManager** | Single fund source for all Tide-DeepBook interactions | Phase 3+ |
+| **BalanceManager** | Single fund source for all Tide-DeepBook interactions | Phase 2 ✅ |
 | **Governance Participation** | Tide DAO votes on DeepBook fee parameters | v3 |
 | **Maker Rebates** | Tide earns rebates when providing liquidity | v3 |
 | **DeepPrice Oracle** | Use DeepBook's price data for collateral valuation | v3 |
