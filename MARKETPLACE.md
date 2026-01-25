@@ -334,18 +334,20 @@ This emits a `TreasuryDeposit` event for tracking.
 | TransferPolicy | High | Ecosystem-wide royalty enforcement |
 | Yield Display | High | Show pending rewards on UI |
 
-## Future: Marketplace v2 (Bid System)
+## Future: Marketplace v2 (Bid System) — Deferred
 
-A bid system is planned to enable:
+A bid system was considered to enable:
 - **Buy Orders** - Buyers place standing bids with escrowed funds
 - **Instant Sell** - Sellers match against best bid
 - **Flash Liquidations** - Capital-free liquidations via DeepBook
 
-See [spec/marketplace-v2.md](./spec/marketplace-v2.md) for the full specification.
+**Status:** ⏸️ **DEFERRED** — Flash Liquidate + Keep provides 90% of value without requiring a bid system.
+
+See [spec/marketplace-v2.md](./spec/marketplace-v2.md) for the specification (when revisiting).
 
 ## Related Documentation
 
 - [spec/marketplace-v1.md](./spec/marketplace-v1.md) - Full technical specification (current)
-- [spec/marketplace-v2.md](./spec/marketplace-v2.md) - Bid system specification (planned)
+- [spec/marketplace-v2.md](./spec/marketplace-v2.md) - Bid system specification (deferred)
 - [README.md](./README.md) - Protocol overview
 - [ADAPTERS.md](./ADAPTERS.md) - Revenue adapter integration

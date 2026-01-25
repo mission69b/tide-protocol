@@ -849,11 +849,19 @@ The following features have been added to expand the v1 foundation:
 - 21 tests (14 unit + 7 E2E)
 - See: `spec/self-paying-loans-v2.md`
 
-### Future: DeepBook Integration (Planned)
-- Flash loan liquidations (Phase 1)
-- Dynamic interest rates (Phase 2)
-- Hybrid liquidity (Phase 3)
-- DEEP token rewards (Phase 4)
+### Future: DeepBook Integration — ⏸️ DEFERRED
+
+DeepBook integration is deferred until the protocol reaches scale.
+
+**Current approach (v1):**
+- Treasury-funded loans (sufficient for FAITH + 1-2 issuers)
+- Fixed 5% APR
+
+**When to revisit:**
+- Treasury 50%+ utilized
+- 3+ issuers onboarded
+
+See [spec/deepbook-integration-v1.md](./spec/deepbook-integration-v1.md) for the full specification.
 - See: `spec/deepbook-integration-v1.md`
 
 ### Future: Marketplace Bid System (Planned)

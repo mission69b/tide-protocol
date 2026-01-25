@@ -249,15 +249,21 @@ sui move test
 sui move test --coverage
 ```
 
-## Future: DeepBook Integration
+## Future: DeepBook Integration — ⏸️ DEFERRED
 
-Planned enhancements via DeepBook V3:
-- **Phase 1:** Flash loan liquidations (capital-free)
-- **Phase 2:** Dynamic interest rates (utilization-based)
-- **Phase 3:** Hybrid liquidity (source from DeepBook pools)
-- **Phase 4:** DEEP token rewards for backers
+DeepBook integration is **deferred** until the protocol reaches scale:
 
-See [spec/deepbook-integration-v1.md](./spec/deepbook-integration-v1.md) for the full specification.
+**Current approach (v1):**
+- Treasury-funded loans (simple, works for 1-2 issuers)
+- Fixed 5% APR (predictable for borrowers)
+- Standard liquidations (rarely needed with self-paying loans)
+
+**When to revisit DeepBook:**
+- Treasury consistently 50%+ utilized
+- 3+ issuers onboarded
+- User demand for dynamic rates
+
+See [spec/deepbook-integration-v1.md](./spec/deepbook-integration-v1.md) for the full specification (when ready to implement).
 
 ## Related Documentation
 

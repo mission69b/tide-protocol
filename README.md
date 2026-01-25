@@ -511,9 +511,9 @@ tide-protocol/
 ├── spec/
 │   ├── tide-core-v1.md          # Locked specification
 │   ├── marketplace-v1.md        # Marketplace specification (current)
-│   ├── marketplace-v2.md        # Marketplace bid system (planned)
+│   ├── marketplace-v2.md        # Marketplace bid system (deferred)
 │   ├── self-paying-loans-v2.md  # Self-paying loans design (v2)
-│   ├── deepbook-integration-v1.md # DeepBook integration (planned)
+│   ├── deepbook-integration-v1.md # DeepBook integration (deferred)
 │   ├── frontend-spec.md         # Frontend/API specification
 │   └── invariants.md            # Audit-ready invariant list
 │
@@ -576,15 +576,22 @@ See [LOANS.md](./LOANS.md) for:
 - Keeper model for harvesting
 - Liquidation mechanics
 
-### DeepBook Integration (Planned)
+### DeepBook Integration — ⏸️ DEFERRED
 
-See [spec/deepbook-integration-v1.md](./spec/deepbook-integration-v1.md) for planned enhancements:
-- **Phase 1A:** Flash liquidate + keep (liquidator keeps pass)
-- **Phase 1B:** Marketplace bid system ([spec/marketplace-v2.md](./spec/marketplace-v2.md))
-- **Phase 1C:** Flash liquidate + sell (true capital-free liquidations)
-- **Phase 2:** Dynamic interest rates (utilization-based)
-- **Phase 3:** Hybrid liquidity (source from DeepBook pools)
-- **Phase 4:** DEEP token rewards for backers
+DeepBook integration is **deferred** until the protocol reaches scale.
+
+**Current approach (v1):**
+- Treasury-funded loans (sufficient for FAITH + 1-2 issuers)
+- Fixed 5% APR (simple, predictable)
+
+**When to revisit:**
+- Treasury 50%+ utilized consistently
+- 3+ issuers onboarded
+- User demand for dynamic rates
+
+See [spec/deepbook-integration-v1.md](./spec/deepbook-integration-v1.md) for the specification (when ready).
+
+**Note:** Phase 3 has sub-phases: 3A (flash + keep), 3B (marketplace bid system), 3C (flash + sell).
 
 ## Protocol Integrations
 

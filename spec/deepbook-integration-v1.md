@@ -1,25 +1,61 @@
 # DeepBook Integration Specification
 
 > **Version:** v1.0
-> **Status:** 📝 DRAFT
+> **Status:** ⏸️ **DEFERRED** — Revisit when treasury utilization exceeds 50%
 > **Author:** Tide Protocol
 > **Last Updated:** January 2026
 
+## Why Deferred?
+
+**Current priority:** Get FAITH onboarded, prove the protocol works with 1-2 issuers.
+
+**DeepBook solves a scale problem we don't have yet:**
+- Treasury-funded loans are sufficient for early stage
+- Fixed 5% rate is simple and predictable
+- Flash liquidations are rarely needed (self-paying loans auto-repay)
+
+**When to revisit:**
+- Treasury consistently 50%+ utilized
+- Multiple issuers onboarded (3+)
+- User demand for lower/dynamic rates
+- High liquidation volume
+
+---
+
 ## Executive Summary
 
-This specification outlines the integration of [DeepBook V3](https://docs.sui.io/standards/deepbook) and [DeepBook Margin](https://docs.sui.io/standards/deepbook-margin) with Tide Protocol's Self-Paying Loans feature. The integration aims to:
+This specification outlines the integration of [DeepBook V3](https://docs.sui.io/standards/deepbook) and [DeepBook Margin](https://docs.sui.io/standards/deepbook-margin) with Tide Protocol's Self-Paying Loans feature.
 
-1. **Increase lending capacity** via DeepBook liquidity pools
-2. **Enable capital-free liquidations** via flash loans
-3. **Implement dynamic interest rates** based on utilization
-4. **Add DEEP token rewards** for Tide backers
+### Simplified Roadmap (3 Phases) — DEFERRED
 
-**Key Benefits:**
-- 10x+ increase in lending capacity
-- Faster, more efficient liquidations
-- Market-driven interest rates
-- Additional yield for backers
-- First-mover advantage as early DeepBook Margin adopter
+| Phase | Feature | User Impact | Timeline |
+|-------|---------|-------------|----------|
+| **1** | **DeepBook Integration** | Market rates + 10x capacity | 2-3 weeks |
+| **2** | **Flash Liquidations** | Capital-efficient liquidations | 1 week |
+| **3** | **DEEP Token Rewards** | Bonus yield for backers | 1-2 weeks |
+
+**Total: 4-6 weeks** (reduced from 10+ weeks)
+
+### Key Benefits
+
+| Benefit | Impact |
+|---------|--------|
+| **10x+ lending capacity** | DeepBook liquidity via BalanceManager |
+| **Market-driven interest rates** | Use DeepBook rates directly (no custom curves) |
+| **Capital-efficient liquidations** | Flash loans reduce liquidator capital needs |
+| **Additional yield** | DEEP tokens for backers (simplified distribution) |
+| **Minimal code** | ~300 LOC total (down from ~800 LOC) |
+| **Fast to ship** | 4-6 weeks (down from 10+ weeks) |
+
+### What We Removed (Simplifications)
+
+| Removed | Reason |
+|---------|--------|
+| Custom rate curves | Use DeepBook's `borrow_rate()` directly |
+| Marketplace bid system | Deferred (Flash + Keep is sufficient) |
+| Flash Liquidate + Sell | Deferred (requires bid system) |
+| Complex DEEP tracking | Simplified to epoch-based snapshots |
+| Margin trading | Removed (too complex, high risk) |
 
 ---
 
@@ -27,15 +63,15 @@ This specification outlines the integration of [DeepBook V3](https://docs.sui.io
 
 1. [Background](#1-background)
 2. [Integration Architecture](#2-integration-architecture)
-3. [Phase 1: Flash Loan Liquidations](#3-phase-1-flash-loan-liquidations)
-4. [Phase 2: Dynamic Interest Rates](#4-phase-2-dynamic-interest-rates)
-5. [Phase 3: Hybrid Liquidity](#5-phase-3-hybrid-liquidity)
-6. [Phase 4: DEEP Token Rewards](#6-phase-4-deep-token-rewards)
-7. [Phase 5: Margin Trading Extension](#7-phase-5-margin-trading-extension)
+3. [Phase 1: DeepBook Integration](#3-phase-1-deepbook-integration) ⭐ (Overview + Rates)
+4. [Phase 2: Flash Liquidations](#4-phase-2-flash-liquidations)
+5. [Phase 1 (continued): DeepBook Liquidity](#5-phase-1-continued-deepbook-liquidity) (Technical Details)
+6. [Phase 3: DEEP Token Rewards](#6-phase-3-deep-token-rewards-simplified)
+7. [Removed/Deferred Features](#7-removeddeferred-features)
 8. [Technical Implementation](#8-technical-implementation)
 9. [Risk Analysis](#9-risk-analysis)
-10. [Testing Requirements](#10-testing-requirements)
-11. [Deployment Plan](#11-deployment-plan)
+10. [Testing Requirements](#10-testing-requirements-simplified)
+11. [Deployment Plan](#11-deployment-plan-simplified)
 12. [Appendix](#12-appendix)
 
 ---
@@ -154,10 +190,10 @@ DeepBook Margin extends DeepBook with leveraged trading:
 │   │  │ (SUI/USDC)  │    │  Manager    │    │  Manager    │               │ │
 │   │  └─────────────┘    └─────────────┘    └─────────────┘               │ │
 │   │                                                                        │ │
-│   │  Features Used:                                                        │ │
-│   │  • Flash loans (Phase 1)                                              │ │
-│   │  • Liquidity pools (Phase 3)                                          │ │
-│   │  • Interest rate oracles (Phase 2)                                    │ │
+│   │  Features Used (Priority Order):                                      │ │
+│   │  • Interest rate oracles (Phase 1) ⭐ HIGH VALUE                      │ │
+│   │  • Liquidity pools (Phase 2) ⭐ HIGH VALUE                            │ │
+│   │  • Flash loans (Phase 3)                                              │ │
 │   │  • DEEP token integration (Phase 4)                                   │ │
 │   │                                                                        │ │
 │   └────────────────────────────────────────────────────────────────────────┘ │
@@ -165,14 +201,17 @@ DeepBook Margin extends DeepBook with leveraged trading:
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### 2.2 New Modules
+### 2.2 New Modules (Simplified)
 
-| Module | Package | Purpose |
-|--------|---------|---------|
-| `deepbook_bridge.move` | `tide_loans` | Bridge to DeepBook for flash loans, liquidity |
-| `flash_liquidator.move` | `tide_loans` | Capital-free liquidation using flash loans |
-| `dynamic_rates.move` | `tide_loans` | Utilization-based interest rate calculation |
-| `deep_rewards.move` | `tide_core` | DEEP token distribution to backers |
+| Module | Package | Phase | Purpose |
+|--------|---------|-------|---------|
+| `lending_pool.move` | `tide_loans` | Phase 1 | DeepBook BalanceManager + rates |
+| `flash_liquidator.move` | `tide_loans` | Phase 2 | Flash loan liquidations (keep only) |
+| `deep_rewards.move` | `tide_core` | Phase 3 | DEEP distribution (epoch-based) |
+
+**Removed:**
+- ~~`dynamic_rates.move`~~ — Use DeepBook's `borrow_rate()` directly
+- ~~`buy_order.move`~~ — Deferred (bid system not needed for Phase 2)
 
 ### 2.3 Package Dependencies
 
@@ -182,180 +221,90 @@ DeepBook Margin extends DeepBook with leveraged trading:
 Sui = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/sui-framework", rev = "framework/mainnet" }
 tide_core = { local = "../core" }
 deepbook = { git = "https://github.com/MystenLabs/deepbookv3", subdir = "packages/deepbook", rev = "main" }
-
-# Optional for Phase 5
-deepbook_margin = { git = "https://github.com/MystenLabs/deepbookv3", subdir = "packages/deepbook_margin", rev = "main" }
 ```
 
 ---
 
-## 3. Phase 1: Flash Loan Liquidations
+## 3. Phase 1: DeepBook Integration ⭐
 
 ### 3.1 Overview
 
-Enable more efficient liquidations using DeepBook's flash loan feature. This phase is split into sub-phases:
+Integrate with DeepBook V3 for:
+1. **Liquidity** — Use BalanceManager as the single fund source
+2. **Interest Rates** — Use DeepBook's market rates directly (no custom curves)
 
-| Sub-Phase | Feature | Capital Required | Marketplace Changes |
-|-----------|---------|------------------|---------------------|
-| **1A** | Flash Liquidate + Keep | Repayment funds | None |
-| **1B** | Bid System | N/A | Add BuyOrder |
-| **1C** | Flash Liquidate + Sell | Zero (true capital-free) | Requires 1B |
+This combines the original "Dynamic Rates" and "Hybrid Liquidity" phases into one simpler integration.
 
-**Current Flow:**
-1. Liquidator needs upfront capital (full loan amount)
-2. Calls `liquidate()` with payment
-3. Receives collateral (SupporterPass)
-4. Sells on secondary market (manual, separate tx)
-5. Keeps profit
+### 3.2 Why Use DeepBook Rates Directly?
 
-**Phase 1A: Flash Liquidate + Keep**
-1. Liquidator calls `flash_liquidate_and_keep()` with repayment funds
-2. Contract flash borrows from DeepBook (for immediate capital)
-3. Uses borrowed funds to liquidate
-4. Liquidator provides repayment funds + keeps SupporterPass
-5. Repays flash loan from liquidator's funds
+| Approach | Complexity | Code | Maintenance |
+|----------|------------|------|-------------|
+| Custom rate curves | High | ~100 LOC | Update curves manually |
+| **DeepBook rates** | **Low** | **1 LOC** | **Market-driven, automatic** |
 
-**Phase 1C: Flash Liquidate + Sell (Requires Bid System)**
-1. Liquidator calls `flash_liquidate_and_sell()` with NO capital
-2. Contract flash borrows from DeepBook
-3. Uses borrowed funds to liquidate
-4. Instantly sells SupporterPass to best bid (marketplace v2)
-5. Repays flash loan + fee from sale proceeds
-6. Liquidator keeps profit
+```move
+// Instead of custom calculation, just call DeepBook
+public fun get_interest_rate(pool: &Pool<SUI, USDC>): u64 {
+    pool::borrow_rate(pool)
+}
+```
 
-### 3.2 Architecture
-
-#### Phase 1A: Flash Liquidate + Keep (Simpler)
+### 3.3 Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│               FLASH LOAN LIQUIDATION - PHASE 1A (KEEP PASS)                  │
+│               PHASE 1: DEEPBOOK INTEGRATION ARCHITECTURE                     │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                              │
-│  ┌─────────────┐                                                            │
-│  │ Liquidator  │ calls flash_liquidate_and_keep()                          │
-│  │ (provides   │ + provides repayment funds                                │
-│  │  repayment) │                                                            │
-│  └──────┬──────┘                                                            │
-│         │                                                                    │
-│         ▼                                                                    │
-│  ┌─────────────────────────────────────────────────────────────────┐       │
-│  │ Step 1: Flash Borrow from DeepBook                              │       │
-│  │         (to have immediate capital for liquidation)             │       │
-│  │ deepbook::pool::flash_loan(pool, loan_amount)                   │       │
-│  │ → Returns: FlashLoan { coin: Coin<SUI>, ... }                   │       │
-│  └────────────────────────────┬────────────────────────────────────┘       │
-│                               │                                             │
-│                               ▼                                             │
-│  ┌─────────────────────────────────────────────────────────────────┐       │
-│  │ Step 2: Liquidate Tide Loan with borrowed funds                 │       │
-│  │                                                                  │       │
-│  │ loan_vault::liquidate(vault, loan_id, borrowed_sui)             │       │
-│  │ → Returns: SupporterPass (worth more than loan!)                │       │
-│  └────────────────────────────┬────────────────────────────────────┘       │
-│                               │                                             │
-│                               ▼                                             │
-│  ┌─────────────────────────────────────────────────────────────────┐       │
-│  │ Step 3: Repay Flash Loan with LIQUIDATOR'S funds                │       │
-│  │                                                                  │       │
-│  │ deepbook::pool::repay_flash_loan(pool, flash_loan, repayment)   │       │
-│  │ → Liquidator provides: loan_amount + flash_fee                  │       │
-│  └────────────────────────────┬────────────────────────────────────┘       │
-│                               │                                             │
-│                               ▼                                             │
-│  ┌─────────────────────────────────────────────────────────────────┐       │
-│  │ Step 4: Liquidator KEEPS the SupporterPass                      │       │
-│  │                                                                  │       │
-│  │ Liquidator paid: ~50 SUI + flash_fee                            │       │
-│  │ Liquidator got: Pass worth ~65 SUI (yield-bearing!)             │       │
-│  │ Instant profit: ~15 SUI (locked in earning asset)               │       │
-│  └─────────────────────────────────────────────────────────────────┘       │
+│   ┌────────────┐                                                            │
+│   │   Tide     │                                                            │
+│   │  Treasury  │                                                            │
+│   └──────┬─────┘                                                            │
+│          │ deposit_liquidity()                                              │
+│          ▼                                                                   │
+│   ┌──────────────────────────────────────────────────────────────┐         │
+│   │              TideLendingPool (tide_loans)                     │         │
+│   │                                                               │         │
+│   │   ┌─────────────────────────────────────────────────────┐    │         │
+│   │   │     DeepBook BalanceManager (single fund source)     │    │         │
+│   │   │                                                      │    │         │
+│   │   │   • treasury_deposit: u64                           │    │         │
+│   │   │   • outstanding: u64                                 │    │         │
+│   │   │   • max_exposure: u64                               │    │         │
+│   │   └─────────────────────────────────────────────────────┘    │         │
+│   └────────┬──────────────────────────────────────────┬──────────┘         │
+│            │ borrow()                                  │                    │
+│            ▼                                           │ get_rate()         │
+│   ┌────────────────┐                                   │                    │
+│   │   Borrower     │                                   ▼                    │
+│   │   (gets SUI)   │                          ┌─────────────────┐          │
+│   └────────────────┘                          │  DeepBook Pool  │          │
+│            │                                   │   borrow_rate() │          │
+│            │ repay()                           └─────────────────┘          │
+│            ▼                                                                 │
+│   ┌──────────────────────────────────────────────────────────────┐         │
+│   │                     Back to BalanceManager                    │         │
+│   └──────────────────────────────────────────────────────────────┘         │
 │                                                                              │
 │  BENEFIT: Liquidator now owns a yield-bearing SupporterPass!                │
 │                                                                              │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
-#### Phase 1C: Flash Liquidate + Sell (Requires Bid System)
-
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│              FLASH LOAN LIQUIDATION - PHASE 1C (INSTANT SELL)                │
-│                    (Requires Marketplace v2 Bid System)                      │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                              │
-│  ┌─────────────┐                                                            │
-│  │ Liquidator  │ calls flash_liquidate_and_sell()                          │
-│  │ (ZERO       │ (truly capital-free!)                                      │
-│  │  capital!)  │                                                            │
-│  └──────┬──────┘                                                            │
-│         │                                                                    │
-│         ▼                                                                    │
-│  ┌─────────────────────────────────────────────────────────────────┐       │
-│  │ Step 1: Flash Borrow from DeepBook                              │       │
-│  │                                                                  │       │
-│  │ deepbook::pool::flash_loan(pool, loan_amount)                   │       │
-│  │ → Returns: FlashLoan { coin: Coin<SUI>, ... }                   │       │
-│  └────────────────────────────┬────────────────────────────────────┘       │
-│                               │                                             │
-│                               ▼                                             │
-│  ┌─────────────────────────────────────────────────────────────────┐       │
-│  │ Step 2: Liquidate Tide Loan                                     │       │
-│  │                                                                  │       │
-│  │ loan_vault::liquidate(vault, loan_id, borrowed_sui)             │       │
-│  │ → Returns: SupporterPass                                        │       │
-│  └────────────────────────────┬────────────────────────────────────┘       │
-│                               │                                             │
-│                               ▼                                             │
-│  ┌─────────────────────────────────────────────────────────────────┐       │
-│  │ Step 3: Instant Sell to Best Bid (Marketplace v2)               │       │
-│  │                                                                  │       │
-│  │ marketplace::instant_sell(buy_order, pass)                      │       │
-│  │ → Matches against standing BuyOrder                             │       │
-│  │ → Returns: Coin<SUI> (bid_price - 5% fee)                       │       │
-│  └────────────────────────────┬────────────────────────────────────┘       │
-│                               │                                             │
-│                               ▼                                             │
-│  ┌─────────────────────────────────────────────────────────────────┐       │
-│  │ Step 4: Repay Flash Loan from sale proceeds                     │       │
-│  │                                                                  │       │
-│  │ deepbook::pool::repay_flash_loan(pool, flash_loan, proceeds)    │       │
-│  │ → Repay: loan_amount + flash_fee from proceeds                  │       │
-│  └────────────────────────────┬────────────────────────────────────┘       │
-│                               │                                             │
-│                               ▼                                             │
-│  ┌─────────────────────────────────────────────────────────────────┐       │
-│  │ Step 5: Profit to Liquidator                                    │       │
-│  │                                                                  │       │
-│  │ profit = proceeds - loan_amount - flash_fee                     │       │
-│  │ transfer::public_transfer(profit, liquidator)                   │       │
-│  │                                                                  │       │
-│  │ TRULY CAPITAL-FREE: Only gas required!                          │       │
-│  └─────────────────────────────────────────────────────────────────┘       │
-│                                                                              │
-└─────────────────────────────────────────────────────────────────────────────┘
-```
-
-### 3.3 Technical Specification
-
-#### 3.3.1 FlashLiquidator Module
+### 3.4 Technical Specification (TideLendingPool)
 
 ```move
-module tide_loans::flash_liquidator;
+module tide_loans::lending_pool;
 
+use deepbook::balance_manager::{Self, BalanceManager};
+use deepbook::pool::{Self, Pool};
 use sui::coin::Coin;
 use sui::sui::SUI;
-use deepbook::pool::{Pool, FlashLoan};
-use tide_loans::loan_vault::LoanVault;
-use tide_marketplace::marketplace::MarketplaceConfig;
-use tide_marketplace::buy_order::BuyOrder;
-use tide_core::listing::Listing;
-use tide_core::capital_vault::CapitalVault;
-use tide_core::supporter_pass::SupporterPass;
 
 // === Errors ===
-const EUnprofitableLiquidation: u64 = 1;
-const ELoanStillHealthy: u64 = 2;
+const EPaused: u64 = 1;
+const EExceedsExposure: u64 = 2;
+const EInsufficientLiquidity: u64 = 3;
 const EInsufficientProceeds: u64 = 3;
 const EInsufficientRepayment: u64 = 4;
 const EBidTooLow: u64 = 5;
@@ -644,47 +593,57 @@ See **[spec/marketplace-v2.md](./marketplace-v2.md)** for the full Bid System sp
 
 ---
 
-## 4. Phase 2: Dynamic Interest Rates
+## 4. Phase 2: Flash Liquidations
+
+> **Simplified:** Only "Flash Liquidate + Keep" is implemented. Bid system and "Flash + Sell" are deferred.
 
 ### 4.1 Overview
 
-Replace fixed 5% APR with utilization-based rates inspired by DeepBook Margin.
+Enable capital-efficient liquidations using DeepBook's flash loan feature.
 
-### 4.2 Rate Model
+| What's Implemented | What's Deferred |
+|-------------------|-----------------|
+| Flash Liquidate + Keep | Marketplace Bid System |
+| Liquidator provides repayment | Flash Liquidate + Sell |
+| Keeps profitable SupporterPass | Zero-capital liquidations |
+
+### 4.2 Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                      UTILIZATION-BASED INTEREST RATES                        │
+│               FLASH LIQUIDATION (KEEP PASS) - SIMPLIFIED                     │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                              │
-│  Interest                                                                    │
-│  Rate (%)                                                                    │
-│      │                                                                       │
-│  25% │                                          ●●●●●●●                     │
-│      │                                     ●●●●●                            │
-│  20% │                                  ●●●                                 │
-│      │                                ●●   (Jump Rate)                      │
-│  15% │                              ●●                                      │
-│      │                            ●●                                        │
-│  10% │                          ●●                                          │
-│      │                        ●●                                            │
-│   5% │       ●●●●●●●●●●●●●●●●●                                              │
-│      │   ●●●●                     (Kink at 80%)                             │
-│   2% │ ●● (Base Rate)                                                       │
-│      │                                                                       │
-│      └──────────────────────────────────────────────────────────────────────│
-│          0%     20%    40%    60%    80%    90%   100%                      │
-│                          Utilization                                         │
-│                                                                              │
-│  Formula:                                                                    │
-│  • If utilization ≤ 80%: rate = 2% + (utilization × 3.75%)                 │
-│  • If utilization > 80%: rate = 5% + ((utilization - 80%) × 100%)          │
-│                                                                              │
-│  Examples:                                                                   │
-│  • 50% utilization → 2% + (0.5 × 3.75%) = 3.875%                           │
-│  • 80% utilization → 2% + (0.8 × 3.75%) = 5%                               │
-│  • 90% utilization → 5% + (0.1 × 100%) = 15%                               │
-│  • 95% utilization → 5% + (0.15 × 100%) = 20%                              │
+│  ┌─────────────┐                                                            │
+│  │ Liquidator  │ calls flash_liquidate_and_keep()                          │
+│  │ (provides   │ + provides repayment funds                                │
+│  │  repayment) │                                                            │
+│  └──────┬──────┘                                                            │
+│         │                                                                    │
+│         ▼                                                                    │
+│  ┌─────────────────────────────────────────────────────────────────┐       │
+│  │ Step 1: Flash Borrow from DeepBook                              │       │
+│  │ deepbook::pool::flash_loan(pool, loan_amount)                   │       │
+│  └────────────────────────────┬────────────────────────────────────┘       │
+│                               │                                             │
+│                               ▼                                             │
+│  ┌─────────────────────────────────────────────────────────────────┐       │
+│  │ Step 2: Liquidate Tide Loan with borrowed funds                 │       │
+│  │ loan_vault::liquidate(vault, loan_id, borrowed_sui)             │       │
+│  │ → Returns: SupporterPass                                        │       │
+│  └────────────────────────────┬────────────────────────────────────┘       │
+│                               │                                             │
+│                               ▼                                             │
+│  ┌─────────────────────────────────────────────────────────────────┐       │
+│  │ Step 3: Repay Flash Loan with LIQUIDATOR'S funds                │       │
+│  │ Liquidator provides: loan_amount + flash_fee                    │       │
+│  └────────────────────────────┬────────────────────────────────────┘       │
+│                               │                                             │
+│                               ▼                                             │
+│  ┌─────────────────────────────────────────────────────────────────┐       │
+│  │ Step 4: Liquidator KEEPS the SupporterPass                      │       │
+│  │ Pass worth ~65 SUI → Profit locked in yield-bearing asset       │       │
+│  └─────────────────────────────────────────────────────────────────┘       │
 │                                                                              │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -692,299 +651,376 @@ Replace fixed 5% APR with utilization-based rates inspired by DeepBook Margin.
 ### 4.3 Technical Specification
 
 ```move
-module tide_loans::dynamic_rates;
+module tide_loans::flash_liquidator;
 
-// === Constants ===
+use sui::coin::Coin;
+use sui::sui::SUI;
+use deepbook::pool::{Pool, FlashLoan};
 
-/// Base interest rate (2% = 200 bps)
-const BASE_RATE_BPS: u64 = 200;
+// === Errors ===
+const ELoanStillHealthy: u64 = 1;
+const EInsufficientRepayment: u64 = 2;
 
-/// Optimal utilization (80% = 8000 bps)
-const OPTIMAL_UTILIZATION_BPS: u64 = 8000;
+// === Events ===
+public struct FlashLiquidation has copy, drop {
+    loan_id: ID,
+    liquidator: address,
+    loan_amount: u64,
+    flash_fee: u64,
+    pass_id: ID,
+    epoch: u64,
+}
 
-/// Slope before kink (3.75% per 100% utilization = 375 bps)
-const SLOPE_1_BPS: u64 = 375;
-
-/// Slope after kink (100% per 20% utilization = 50000 bps per 10000)
-const SLOPE_2_BPS: u64 = 50000;
-
-/// Maximum rate cap (50% = 5000 bps)
-const MAX_RATE_BPS: u64 = 5000;
-
-// === Functions ===
-
-/// Calculate current interest rate based on utilization.
-public fun calculate_interest_rate(
-    total_borrowed: u64,
-    total_liquidity: u64,
-): u64 {
-    if (total_liquidity == 0) {
-        return BASE_RATE_BPS
+/// Flash liquidate and keep the SupporterPass.
+/// Liquidator provides repayment funds, keeps the profitable pass.
+public fun flash_liquidate_and_keep(
+    loan_vault: &mut LoanVault,
+    loan_id: ID,
+    listing: &Listing,
+    capital_vault: &CapitalVault,
+    pool: &mut Pool<SUI, USDC>,
+    repayment: Coin<SUI>,
+    ctx: &mut TxContext,
+): SupporterPass {
+    // 1. Calculate payoff
+    let payoff = loan_vault.outstanding_balance(loan_id);
+    let flash_fee = pool.flash_loan_fee(payoff);
+    
+    // 2. Validate repayment covers costs
+    assert!(repayment.value() >= payoff + flash_fee, EInsufficientRepayment);
+    
+    // 3. Flash borrow
+    let (flash_loan, borrowed) = pool.flash_loan(payoff, ctx);
+    
+    // 4. Liquidate
+    let pass = loan_vault.liquidate(loan_id, listing, capital_vault, borrowed, ctx);
+    
+    // 5. Repay flash loan
+    let repay_coin = repayment.split(payoff + flash_fee, ctx);
+    pool.repay_flash_loan(flash_loan, repay_coin);
+    
+    // 6. Return excess to liquidator
+    if (repayment.value() > 0) {
+        transfer::public_transfer(repayment, ctx.sender());
+    } else {
+        repayment.destroy_zero();
     };
     
-    let utilization_bps = (total_borrowed * 10000) / total_liquidity;
+    // 7. Emit event
+    event::emit(FlashLiquidation {
+        loan_id,
+        liquidator: ctx.sender(),
+        loan_amount: payoff,
+        flash_fee,
+        pass_id: object::id(&pass),
+        epoch: ctx.epoch(),
+    });
     
-    if (utilization_bps <= OPTIMAL_UTILIZATION_BPS) {
-        // Below kink: gentle slope
-        BASE_RATE_BPS + (utilization_bps * SLOPE_1_BPS / 10000)
+    pass
+}
+
+/// Estimate profit from keeping the pass.
+public fun estimate_profit(
+    loan_vault: &LoanVault,
+    loan_id: ID,
+    pool: &Pool<SUI, USDC>,
+): u64 {
+    let payoff = loan_vault.outstanding_balance(loan_id);
+    let flash_fee = pool.flash_loan_fee(payoff);
+    let collateral_value = loan_vault.collateral_value(loan_id);
+    
+    if (collateral_value > payoff + flash_fee) {
+        collateral_value - payoff - flash_fee
     } else {
-        // Above kink: steep slope
-        let base_at_kink = BASE_RATE_BPS + (OPTIMAL_UTILIZATION_BPS * SLOPE_1_BPS / 10000);
-        let excess_utilization = utilization_bps - OPTIMAL_UTILIZATION_BPS;
-        let jump_rate = (excess_utilization * SLOPE_2_BPS) / 10000;
-        
-        let rate = base_at_kink + jump_rate;
-        
-        // Cap at maximum
-        if (rate > MAX_RATE_BPS) {
-            MAX_RATE_BPS
-        } else {
-            rate
-        }
+        0
     }
 }
-
-/// Calculate interest accrued over time period.
-public fun calculate_accrued_interest(
-    principal: u64,
-    rate_bps: u64,
-    time_elapsed_ms: u64,
-): u64 {
-    // interest = principal × rate × time
-    // time in years = time_elapsed_ms / (365.25 × 24 × 60 × 60 × 1000)
-    let ms_per_year: u128 = 31557600000; // 365.25 days
-    
-    let interest = ((principal as u128) * (rate_bps as u128) * (time_elapsed_ms as u128))
-        / (10000 * ms_per_year);
-    
-    (interest as u64)
-}
-
-/// Get utilization ratio.
-public fun get_utilization_bps(vault: &LoanVault): u64 {
-    let liquidity = vault.total_liquidity();
-    if (liquidity == 0) {
-        return 0
-    };
-    (vault.total_borrowed() * 10000) / liquidity
-}
 ```
 
-### 4.4 Integration with LoanVault
+### 4.4 Benefits
 
-Update `loan_vault.move` to use dynamic rates:
+| Metric | Before | After (Flash Liquidate + Keep) |
+|--------|--------|--------------------------------|
+| Capital Required | Full loan amount | Repayment amount only |
+| Liquidator Pool | Capital-rich only | More accessible |
+| Execution | Multi-step | Atomic (single tx) |
+| Profit | Immediate SUI | Yield-bearing SupporterPass |
 
-```move
-// In loan_vault.move
+### 4.5 Deferred Features
 
-/// Accrue interest on a loan using current dynamic rate.
-public(package) fun accrue_interest(
-    vault: &mut LoanVault,
-    loan: &mut Loan,
-    ctx: &TxContext,
-) {
-    let current_rate = dynamic_rates::calculate_interest_rate(
-        vault.total_borrowed,
-        vault.liquidity.value() + vault.total_borrowed,
-    );
-    
-    let elapsed = ctx.epoch_timestamp_ms() - loan.last_update;
-    let new_interest = dynamic_rates::calculate_accrued_interest(
-        loan.outstanding_balance(),
-        current_rate,
-        elapsed,
-    );
-    
-    loan.interest_accrued = loan.interest_accrued + new_interest;
-    loan.last_update = ctx.epoch_timestamp_ms();
-}
-```
+The following are intentionally deferred:
 
-### 4.5 Benefits
+| Feature | Why Deferred |
+|---------|--------------|
+| Marketplace Bid System | Significant new feature, not essential |
+| Flash Liquidate + Sell | Requires bid system |
+| Zero-capital liquidations | Flash + Keep is sufficient for now |
 
-| Aspect | Fixed Rate | Dynamic Rate |
-|--------|------------|--------------|
-| Capital Efficiency | Low (rate doesn't adapt) | High (incentivizes balance) |
-| Borrower Cost | Fixed 5% always | Low when utilization low |
-| Lender Yield | Fixed 5% always | High when utilization high |
-| Market Alignment | None | Follows supply/demand |
+These can be revisited when there's proven demand.
 
 ---
 
-## 5. Phase 3: Hybrid Liquidity
+## 5. Phase 1 (continued): DeepBook Liquidity
+
+> **Note:** This section continues Phase 1 (DeepBook Integration) with the liquidity sourcing details.
+> 
+> See Section 3 for the combined Phase 1 overview.
 
 ### 5.1 Overview
 
-Source additional lending liquidity from DeepBook pools when Tide treasury is insufficient.
+Source ALL lending liquidity from DeepBook via a single `BalanceManager`.
+
+> **Design Decision:** We chose DeepBook-Only over Hybrid (Treasury + DeepBook) for simplicity.
+
+| Approach | Complexity | Code Size | Recommendation |
+|----------|------------|-----------|----------------|
+| Hybrid (Treasury + DeepBook) | High | ~500 LOC | ❌ Over-engineered |
+| DeepBook-Only via BalanceManager | Low | ~200 LOC | ✅ **Recommended** |
+
+**Why DeepBook-Only is Better:**
+1. **Simpler architecture** — One fund source, one interface
+2. **Less code** — No blending, no waterfall repayment logic
+3. **Market-driven rates** — DeepBook handles rate calculation
+4. **Scalable** — Grows with DeepBook's liquidity pools
+5. **Battle-tested** — Leverages DeepBook's proven infrastructure
+
+**Tide Treasury Role (Updated):**
+- Tide deposits Treasury funds INTO the BalanceManager
+- BalanceManager becomes the single source for all loans
+- Treasury acts as "seed liquidity" that earns DeepBook rates
+- Tide can withdraw from BalanceManager when needed
 
 ### 5.2 Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                         HYBRID LIQUIDITY MODEL                               │
+│              DEEPBOOK-ONLY LIQUIDITY (via BalanceManager)                    │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                              │
-│  User requests: 1000 SUI loan                                               │
+│  ┌─────────────────────────────────────────────────────────────────┐       │
+│  │                    SETUP (One-time)                             │       │
+│  │                                                                  │       │
+│  │  1. Tide creates BalanceManager on DeepBook                     │       │
+│  │  2. Tide deposits Treasury funds → BalanceManager               │       │
+│  │  3. BalanceManager is now the liquidity source                  │       │
+│  └─────────────────────────────────────────────────────────────────┘       │
 │                                                                              │
 │  ┌─────────────────────────────────────────────────────────────────┐       │
-│  │ LoanVault Liquidity Check                                       │       │
+│  │                    BORROW FLOW                                   │       │
 │  │                                                                  │       │
-│  │ Tide Treasury: 200 SUI available                                │       │
-│  │ Shortfall: 800 SUI needed                                       │       │
-│  └────────────────────────────┬────────────────────────────────────┘       │
-│                               │                                             │
-│                               ▼                                             │
+│  │  User requests: 1000 SUI loan                                   │       │
+│  │         │                                                        │       │
+│  │         ▼                                                        │       │
+│  │  ┌─────────────────────────────────────────────────────────┐   │       │
+│  │  │ TideLendingPool (wrapper)                                │   │       │
+│  │  │                                                          │   │       │
+│  │  │ 1. Check BalanceManager has funds                       │   │       │
+│  │  │ 2. balance_manager::withdraw(1000 SUI)                  │   │       │
+│  │  │ 3. Issue loan to user                                   │   │       │
+│  │  │ 4. Record loan details                                  │   │       │
+│  │  └─────────────────────────────────────────────────────────┘   │       │
+│  └─────────────────────────────────────────────────────────────────┘       │
+│                                                                              │
 │  ┌─────────────────────────────────────────────────────────────────┐       │
-│  │ DeepBook Liquidity Bridge                                       │       │
+│  │                    REPAY FLOW                                    │       │
 │  │                                                                  │       │
-│  │ 1. Query DeepBook pools for best rate                           │       │
-│  │ 2. Borrow 800 SUI from DeepBook                                 │       │
-│  │ 3. Combine with Tide's 200 SUI                                  │       │
-│  │ 4. Issue loan to user                                           │       │
-│  └────────────────────────────┬────────────────────────────────────┘       │
-│                               │                                             │
-│                               ▼                                             │
-│  ┌─────────────────────────────────────────────────────────────────┐       │
-│  │ Loan Record                                                      │       │
-│  │                                                                  │       │
-│  │ • Total Principal: 1000 SUI                                     │       │
-│  │ • Tide Portion: 200 SUI (earns Tide rate)                       │       │
-│  │ • DeepBook Portion: 800 SUI (earns DB rate)                     │       │
-│  │ • Blended Rate: weighted average                                │       │
-│  └────────────────────────────┬────────────────────────────────────┘       │
-│                               │                                             │
-│                               ▼                                             │
-│  ┌─────────────────────────────────────────────────────────────────┐       │
-│  │ Repayment Distribution                                          │       │
-│  │                                                                  │       │
-│  │ When rewards come in:                                           │       │
-│  │ 1. Pay DeepBook interest first (priority)                       │       │
-│  │ 2. Pay DeepBook principal                                       │       │
-│  │ 3. Pay Tide interest                                            │       │
-│  │ 4. Pay Tide principal                                           │       │
-│  │                                                                  │       │
-│  │ → DeepBook gets repaid faster (reduces external debt)           │       │
+│  │  Rewards come in (from SupporterPass)                           │       │
+│  │         │                                                        │       │
+│  │         ▼                                                        │       │
+│  │  ┌─────────────────────────────────────────────────────────┐   │       │
+│  │  │ TideLendingPool                                          │   │       │
+│  │  │                                                          │   │       │
+│  │  │ 1. Calculate interest owed                               │   │       │
+│  │  │ 2. balance_manager::deposit(repayment)                  │   │       │
+│  │  │ 3. Update loan record                                   │   │       │
+│  │  │                                                          │   │       │
+│  │  │ → No waterfall, no blending. Just deposit and done.     │   │       │
+│  │  └─────────────────────────────────────────────────────────┘   │       │
 │  └─────────────────────────────────────────────────────────────────┘       │
 │                                                                              │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### 5.3 Technical Specification
+### 5.3 Technical Specification (Simplified)
 
 ```move
-module tide_loans::deepbook_bridge;
+module tide_loans::lending_pool;
 
-use deepbook::pool::Pool;
-use deepbook::balance_manager::BalanceManager;
+use deepbook::balance_manager::{Self, BalanceManager};
+use deepbook::pool::{Self, Pool};
 use sui::coin::Coin;
 use sui::sui::SUI;
 
 // === Structs ===
 
-/// Tracks liquidity borrowed from DeepBook
-public struct DeepBookLoan has store {
-    pool_id: ID,
-    principal: u64,
-    interest_accrued: u64,
-    borrowed_at: u64,
-    rate_at_borrow: u64,
+/// Tide's wrapper around DeepBook BalanceManager
+/// Single source of truth for all lending liquidity
+public struct TideLendingPool has key {
+    id: UID,
+    /// DeepBook BalanceManager - single fund source
+    balance_manager_id: ID,
+    /// Total deposited by Tide Treasury
+    treasury_deposit: u64,
+    /// Total currently lent out
+    outstanding: u64,
+    /// Maximum lending exposure
+    max_exposure: u64,
+    /// Admin controls
+    admin: address,
+    /// Pause flag
+    paused: bool,
 }
 
-/// Bridge configuration
-public struct BridgeConfig has store {
-    /// Maximum amount to borrow from DeepBook
-    max_deepbook_exposure: u64,
-    /// Preferred pools in order
-    preferred_pools: vector<ID>,
-    /// Minimum spread over DeepBook rate
-    min_spread_bps: u64,
-    /// Whether bridge is enabled
-    enabled: bool,
+/// Config for the lending pool
+public struct LendingConfig has store {
+    /// Minimum loan amount
+    min_loan: u64,
+    /// Maximum single loan amount  
+    max_loan: u64,
+    /// Interest rate (from DeepBook or override)
+    rate_override: Option<u64>,
 }
 
-// === Functions ===
+// === Admin Functions ===
 
-/// Borrow liquidity from DeepBook to supplement Tide treasury.
-public fun borrow_from_deepbook(
-    vault: &mut LoanVault,
-    pool: &mut Pool<SUI, USDC>,
+/// Create lending pool with BalanceManager
+public fun create_pool(
+    admin_cap: &AdminCap,
+    ctx: &mut TxContext,
+): TideLendingPool {
+    let balance_manager = balance_manager::new(ctx);
+    let bm_id = object::id(&balance_manager);
+    
+    // Transfer BalanceManager to be managed by this module
+    transfer::public_share_object(balance_manager);
+    
+    TideLendingPool {
+        id: object::new(ctx),
+        balance_manager_id: bm_id,
+        treasury_deposit: 0,
+        outstanding: 0,
+        max_exposure: 1_000_000_000_000, // 1M SUI default
+        admin: ctx.sender(),
+        paused: false,
+    }
+}
+
+/// Deposit Treasury funds for lending
+public fun deposit_liquidity(
+    pool: &mut TideLendingPool,
+    balance_manager: &mut BalanceManager,
+    admin_cap: &AdminCap,
+    coin: Coin<SUI>,
+) {
+    let amount = coin.value();
+    balance_manager::deposit(balance_manager, coin);
+    pool.treasury_deposit = pool.treasury_deposit + amount;
+}
+
+/// Withdraw Treasury funds
+public fun withdraw_liquidity(
+    pool: &mut TideLendingPool,
+    balance_manager: &mut BalanceManager,
+    admin_cap: &AdminCap,
     amount: u64,
     ctx: &mut TxContext,
 ): Coin<SUI> {
-    assert!(vault.bridge_config.enabled, EBridgeDisabled);
-    assert!(
-        vault.deepbook_exposure() + amount <= vault.bridge_config.max_deepbook_exposure,
-        EExceedsMaxExposure,
-    );
+    // Can only withdraw unused funds
+    let available = pool.treasury_deposit - pool.outstanding;
+    assert!(amount <= available, EInsufficientLiquidity);
     
-    // Get current DeepBook borrow rate
-    let db_rate = pool.borrow_rate();
-    
-    // Borrow from DeepBook
-    let borrowed = pool.borrow(amount, ctx);
-    
-    // Record the loan
-    let db_loan = DeepBookLoan {
-        pool_id: object::id(pool),
-        principal: amount,
-        interest_accrued: 0,
-        borrowed_at: ctx.epoch_timestamp_ms(),
-        rate_at_borrow: db_rate,
-    };
-    
-    vault.deepbook_loans.push_back(db_loan);
-    
-    borrowed
+    pool.treasury_deposit = pool.treasury_deposit - amount;
+    balance_manager::withdraw(balance_manager, amount, ctx)
 }
 
-/// Repay DeepBook loan when Tide loan is repaid.
-public fun repay_to_deepbook(
-    vault: &mut LoanVault,
-    pool: &mut Pool<SUI, USDC>,
-    amount: Coin<SUI>,
+// === Lending Functions ===
+
+/// Borrow from the pool (called internally by LoanVault)
+public(package) fun borrow(
+    pool: &mut TideLendingPool,
+    balance_manager: &mut BalanceManager,
+    amount: u64,
     ctx: &mut TxContext,
-) {
-    // Find matching DeepBook loan
-    // Apply payment
-    // ...
+): Coin<SUI> {
+    assert!(!pool.paused, EPaused);
+    assert!(pool.outstanding + amount <= pool.max_exposure, EExceedsExposure);
+    
+    let coin = balance_manager::withdraw(balance_manager, amount, ctx);
+    pool.outstanding = pool.outstanding + amount;
+    coin
 }
 
-/// Calculate blended interest rate for a loan.
-public fun calculate_blended_rate(
-    tide_portion: u64,
-    tide_rate: u64,
-    deepbook_portion: u64,
-    deepbook_rate: u64,
-): u64 {
-    let total = tide_portion + deepbook_portion;
-    if (total == 0) {
-        return 0
-    };
-    
-    let weighted = ((tide_portion as u128) * (tide_rate as u128)
-        + (deepbook_portion as u128) * (deepbook_rate as u128))
-        / (total as u128);
-    
-    (weighted as u64)
+/// Repay to the pool
+public(package) fun repay(
+    pool: &mut TideLendingPool,
+    balance_manager: &mut BalanceManager,
+    coin: Coin<SUI>,
+) {
+    let amount = coin.value();
+    balance_manager::deposit(balance_manager, coin);
+    pool.outstanding = pool.outstanding - amount;
+}
+
+// === View Functions ===
+
+/// Get available liquidity
+public fun available_liquidity(pool: &TideLendingPool): u64 {
+    pool.treasury_deposit - pool.outstanding
+}
+
+/// Get current utilization (0-10000 bps)
+public fun utilization_bps(pool: &TideLendingPool): u64 {
+    if (pool.treasury_deposit == 0) { return 0 };
+    (pool.outstanding * 10000) / pool.treasury_deposit
+}
+
+/// Get interest rate (from DeepBook pool)
+public fun get_rate(deepbook_pool: &Pool<SUI, USDC>): u64 {
+    pool::borrow_rate(deepbook_pool)
 }
 ```
 
+**Key Simplifications:**
+- No `DeepBookLoan` tracking per-loan source
+- No `calculate_blended_rate` — just use DeepBook rate
+- No waterfall repayment — single deposit destination
+- ~120 LOC instead of ~500 LOC
+
 ### 5.4 Benefits
 
-| Metric | Treasury Only | Hybrid |
-|--------|---------------|--------|
-| Max Lending Capacity | Treasury allocation | Essentially unlimited |
-| Capital Efficiency | Low | High |
-| Rate Competitiveness | Fixed | Market-competitive |
-| Risk Diversification | Concentrated | Distributed |
+| Metric | Before (Treasury Only) | After (DeepBook via BalanceManager) |
+|--------|------------------------|-------------------------------------|
+| Max Lending Capacity | Limited to Treasury | Scales with Treasury deposit |
+| Rate Calculation | Custom logic | DeepBook handles it |
+| Code Complexity | Medium | **Low** |
+| Capital Efficiency | Low | High (market rates) |
+| Maintenance | Custom rate curves | Leverage DeepBook's battle-tested code |
+| Dependency | None | DeepBook (acceptable tradeoff) |
+
+### 5.5 Risk Mitigation
+
+| Risk | Mitigation |
+|------|------------|
+| **DeepBook downtime** | Pause lending; loans continue with fixed rate |
+| **Rate manipulation** | Rate cap in TideLendingPool |
+| **Liquidity drain** | `max_exposure` limit |
+| **Smart contract bug** | Deposit limits, gradual rollout |
 
 ---
 
-## 6. Phase 4: DEEP Token Rewards
+## 6. Phase 3: DEEP Token Rewards (Simplified)
 
 ### 6.1 Overview
 
 Distribute DEEP tokens to Tide backers as additional yield.
+
+> **Simplified Design:** We use epoch-based snapshot distribution instead of complex cumulative tracking.
+
+| Original Approach | Simplified Approach |
+|-------------------|---------------------|
+| Cumulative `deep_per_share` tracking | Epoch-based snapshots |
+| Complex claim index per pass | Simple proportional claims |
+| ~100 LOC | **~40 LOC** |
 
 **DEEP Token Benefits (from [DeepBook Documentation](https://docs.sui.io/standards/deepbook)):**
 
@@ -1042,84 +1078,69 @@ module tide_core::deep_rewards;
 use sui::coin::Coin;
 use deepbook::deep::DEEP;
 
-// === Structs ===
+// === Structs (Simplified) ===
 
-/// DEEP reward distribution configuration
-public struct DeepRewardsConfig has key {
+/// DEEP reward pool - epoch-based snapshot distribution
+public struct DeepRewardsPool has key {
     id: UID,
-    /// Total DEEP accumulated for distribution
-    pending_deep: Balance<DEEP>,
-    /// Distribution rate (per epoch)
-    distribution_rate_bps: u64,
-    /// Last distribution epoch
-    last_distribution_epoch: u64,
-    /// Total DEEP distributed lifetime
-    total_distributed: u64,
+    /// DEEP balance available for claims
+    deep_balance: Balance<DEEP>,
+    /// Amount to distribute this epoch
+    distribution_amount: u64,
+    /// Epoch when snapshot was taken
+    snapshot_epoch: u64,
+    /// Total shares at snapshot (for proportional claims)
+    snapshot_total_shares: u64,
+    /// Admin
+    admin: address,
 }
 
-/// Tracks DEEP rewards for a listing
-public struct ListingDeepRewards has store {
-    listing_id: ID,
-    accumulated_deep: u64,
-    deep_per_share: u128,  // Cumulative, similar to SUI rewards
-    last_update: u64,
-}
+// === Functions (Simplified) ===
 
-// === Functions ===
-
-/// Deposit DEEP tokens for distribution to backers.
+/// Admin deposits DEEP for distribution.
 public fun deposit_deep(
-    config: &mut DeepRewardsConfig,
+    pool: &mut DeepRewardsPool,
+    admin_cap: &AdminCap,
     deep: Coin<DEEP>,
     ctx: &TxContext,
 ) {
     let amount = deep.value();
-    config.pending_deep.join(deep.into_balance());
+    pool.deep_balance.join(deep.into_balance());
     
     event::emit(DeepDeposited {
         amount,
-        new_balance: config.pending_deep.value(),
-        depositor: ctx.sender(),
+        new_balance: pool.deep_balance.value(),
         epoch: ctx.epoch(),
     });
 }
 
-/// Distribute DEEP rewards to a listing's reward pool.
-public fun distribute_deep_to_listing(
-    config: &mut DeepRewardsConfig,
-    listing_rewards: &mut ListingDeepRewards,
+/// Admin starts a distribution round (takes snapshot).
+public fun start_distribution(
+    pool: &mut DeepRewardsPool,
     capital_vault: &CapitalVault,
     amount: u64,
-    ctx: &mut TxContext,
-): Coin<DEEP> {
-    let deep = config.pending_deep.split(amount);
+    admin_cap: &AdminCap,
+    ctx: &TxContext,
+) {
+    assert!(pool.deep_balance.value() >= amount, EInsufficientBalance);
     
-    // Update cumulative index
-    let total_shares = capital_vault.total_shares();
-    if (total_shares > 0) {
-        listing_rewards.deep_per_share = listing_rewards.deep_per_share 
-            + (((amount as u128) * PRECISION) / total_shares);
-    };
-    
-    listing_rewards.accumulated_deep = listing_rewards.accumulated_deep + amount;
-    listing_rewards.last_update = ctx.epoch_timestamp_ms();
-    
-    coin::from_balance(deep, ctx)
+    pool.distribution_amount = amount;
+    pool.snapshot_epoch = ctx.epoch();
+    pool.snapshot_total_shares = capital_vault.total_shares();
 }
 
-/// Claim DEEP rewards for a SupporterPass holder.
+/// Backer claims their proportional DEEP share.
 public fun claim_deep(
-    listing_rewards: &ListingDeepRewards,
-    pass: &mut SupporterPass,
+    pool: &mut DeepRewardsPool,
+    pass: &SupporterPass,
     ctx: &mut TxContext,
 ): Coin<DEEP> {
-    let claimable = calculate_deep_claimable(listing_rewards, pass);
+    // Calculate share: (pass.shares / total_shares) * distribution_amount
+    let share_bps = (pass.shares * 10000) / pool.snapshot_total_shares;
+    let claimable = (pool.distribution_amount * share_bps) / 10000;
     
-    // Update pass cursor (similar to SUI claim)
-    pass.deep_claim_index = listing_rewards.deep_per_share;
-    
-    // Transfer DEEP to holder
-    // ...
+    // Extract and return
+    coin::from_balance(pool.deep_balance.split(claimable), ctx)
 }
 ```
 
@@ -1134,89 +1155,46 @@ public fun claim_deep(
 
 ---
 
-## 7. Phase 5: Margin Trading Extension
+## 7. Removed/Deferred Features
 
-### 7.1 Overview
+The following features were removed from this specification to reduce complexity:
 
-Advanced integration allowing SupporterPass collateral to enable margin trading on DeepBook.
+| Feature | Status | Reason | Can Revisit? |
+|---------|--------|--------|--------------|
+| Custom Rate Curves | **Removed** | Use DeepBook's `borrow_rate()` directly | No need |
+| Marketplace Bid System | **Deferred** | Only needed for Flash + Sell | When demand exists |
+| Flash Liquidate + Sell | **Deferred** | Requires bid system | After bid system |
+| Margin Trading | **Removed** | High complexity, high risk | After 12+ months stable operation |
+| Complex DEEP Tracking | **Simplified** | Epoch snapshots sufficient | If precision needed |
 
-**Warning:** This is high-complexity and should only be considered after Phases 1-4 are stable.
-
-### 7.2 Concept
-
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                      MARGIN TRADING WITH SUPPORTERPASS                       │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                              │
-│  User Flow:                                                                  │
-│                                                                              │
-│  1. User deposits SupporterPass to Tide LoanVault                           │
-│  2. User borrows SUI (standard self-paying loan)                            │
-│  3. User deposits borrowed SUI to DeepBook BalanceManager                   │
-│  4. User opens leveraged position on DeepBook                               │
-│                                                                              │
-│  ┌──────────────┐    ┌─────────────┐    ┌─────────────┐    ┌────────────┐ │
-│  │SupporterPass │───▶│ Tide Loan   │───▶│  DeepBook   │───▶│  Margin    │ │
-│  │ (100 SUI)    │    │ (50 SUI)    │    │ (50 SUI)    │    │  Trading   │ │
-│  └──────────────┘    └─────────────┘    └─────────────┘    │  (2x-5x)   │ │
-│                                                             └────────────┘ │
-│                                                                              │
-│  Example:                                                                    │
-│  • Collateral: 100 SUI (SupporterPass)                                      │
-│  • Borrow: 50 SUI (50% LTV)                                                 │
-│  • Deposit to DeepBook: 50 SUI                                              │
-│  • Open 3x long: 150 SUI exposure                                           │
-│  • Total leverage: 1.5x on original 100 SUI                                 │
-│                                                                              │
-│  Repayment:                                                                  │
-│  • Pass rewards auto-repay Tide loan                                        │
-│  • Trading profits/losses separate                                          │
-│  • If trading profitable: extra yield                                       │
-│  • If trading losses: may need to top up or face Tide liquidation          │
-│                                                                              │
-└─────────────────────────────────────────────────────────────────────────────┘
-```
-
-### 7.3 Risks
-
-| Risk | Severity | Mitigation |
-|------|----------|------------|
-| Cascading Liquidations | High | Separate risk management |
-| Complexity | High | Extensive testing |
-| User Education | High | Clear documentation |
-| Smart Contract Risk | High | Audits, gradual rollout |
-
-### 7.4 Recommendation
-
-**Defer Phase 5** until:
-1. Phases 1-4 are production-stable for 6+ months
-2. DeepBook Margin matures
-3. User demand validates the feature
-4. Dedicated audit for margin integration
+**Total Code Reduction:** ~500 LOC removed (from ~800 LOC to ~300 LOC)
 
 ---
 
 ## 8. Technical Implementation
 
-### 8.1 Package Structure
+### 8.1 Package Structure (Simplified)
 
 ```
 contracts/loans/
 ├── Move.toml
 ├── sources/
 │   ├── loan_vault.move          # Core (existing)
-│   ├── flash_liquidator.move    # Phase 1: Flash loans
-│   ├── dynamic_rates.move       # Phase 2: Utilization rates
-│   ├── deepbook_bridge.move     # Phase 3: Hybrid liquidity
-│   └── deep_rewards.move        # Phase 4: DEEP tokens
+│   ├── lending_pool.move        # Phase 1: DeepBook liquidity + rates
+│   └── flash_liquidator.move    # Phase 2: Flash loan liquidations
 └── tests/
     ├── loan_vault_tests.move
+    ├── lending_pool_tests.move
     ├── flash_liquidator_tests.move
-    ├── dynamic_rates_tests.move
-    ├── deepbook_bridge_tests.move
     └── integration_tests.move
+
+contracts/core/sources/
+├── deep_rewards.move            # Phase 3: DEEP distribution (simplified)
 ```
+
+**Removed Modules:**
+- ~~`dynamic_rates.move`~~ — Use `pool::borrow_rate()` directly
+- ~~`buy_order.move`~~ — Deferred (bid system not needed)
 
 ### 8.2 Dependencies
 
@@ -1243,14 +1221,15 @@ tide_loans = "0x0"
 
 ### 8.3 Key DeepBook Functions to Use
 
-| DeepBook Function | Tide Usage |
-|-------------------|------------|
-| `pool::flash_loan()` | Phase 1: Borrow for liquidation |
-| `pool::repay_flash_loan()` | Phase 1: Repay after liquidation |
-| `pool::borrow_rate()` | Phase 2: Get market rate |
-| `balance_manager::deposit()` | Phase 3: Deposit for borrowing |
-| `balance_manager::withdraw()` | Phase 3: Withdraw after repay |
-| `deep::transfer()` | Phase 4: Distribute DEEP rewards |
+| DeepBook Function | Tide Usage | Phase |
+|-------------------|------------|-------|
+| `balance_manager::new()` | Create lending pool | Phase 1 |
+| `balance_manager::deposit()` | Deposit treasury funds | Phase 1 |
+| `balance_manager::withdraw()` | Lend to borrowers | Phase 1 |
+| `pool::borrow_rate()` | Get market interest rate | Phase 1 |
+| `pool::flash_loan()` | Borrow for liquidation | Phase 2 |
+| `pool::repay_flash_loan()` | Repay after liquidation | Phase 2 |
+| `deep::transfer()` | Distribute DEEP rewards | Phase 3 |
 
 ### 8.4 BalanceManager Integration
 
@@ -1325,117 +1304,90 @@ Flash loan flow from DeepBook (atomic within one transaction):
 
 ---
 
-## 10. Testing Requirements
+## 10. Testing Requirements (Simplified)
 
 ### 10.1 Unit Tests
 
-**Phase 1A: Flash Liquidate + Keep**
+**Phase 1: DeepBook Integration (Liquidity + Rates)**
+- [ ] `test_create_lending_pool`
+- [ ] `test_deposit_liquidity`
+- [ ] `test_withdraw_liquidity`
+- [ ] `test_borrow_from_pool`
+- [ ] `test_repay_to_pool`
+- [ ] `test_available_liquidity`
+- [ ] `test_utilization_bps`
+- [ ] `test_exposure_limits`
+- [ ] `test_pause_lending`
+- [ ] `test_get_rate_from_deepbook`
+
+**Phase 2: Flash Liquidations (Keep Only)**
 - [ ] `test_flash_liquidate_and_keep_success`
 - [ ] `test_flash_liquidate_and_keep_insufficient_repayment_fails`
 - [ ] `test_flash_liquidate_and_keep_healthy_loan_fails`
 - [ ] `test_flash_liquidate_and_keep_returns_excess`
-- [ ] `test_estimate_keep_profit`
+- [ ] `test_estimate_profit`
 
-**Phase 1B: Marketplace Bid System (see marketplace-v2.md)**
-- [ ] `test_create_buy_order`
-- [ ] `test_cancel_buy_order`
-- [ ] `test_instant_sell`
-- [ ] `test_instant_sell_fee_calculation`
-
-**Phase 1C: Flash Liquidate + Sell**
-- [ ] `test_flash_liquidate_and_sell_success`
-- [ ] `test_flash_liquidate_and_sell_bid_too_low_fails`
-- [ ] `test_flash_liquidate_and_sell_healthy_loan_fails`
-- [ ] `test_estimate_sell_profit`
-- [ ] `test_is_profitable_with_bid`
-
-**Phase 2: Dynamic Rates**
-- [ ] `test_rate_at_zero_utilization`
-- [ ] `test_rate_at_optimal_utilization`
-- [ ] `test_rate_above_optimal_utilization`
-- [ ] `test_rate_at_max_utilization`
-- [ ] `test_rate_cap`
-- [ ] `test_interest_accrual_with_dynamic_rate`
-
-**Phase 3: Hybrid Liquidity**
-- [ ] `test_borrow_from_deepbook`
-- [ ] `test_repay_to_deepbook`
-- [ ] `test_blended_rate_calculation`
-- [ ] `test_exposure_limits`
-- [ ] `test_waterfall_repayment`
-
-**Phase 4: DEEP Rewards**
+**Phase 3: DEEP Token Rewards (Simplified)**
 - [ ] `test_deposit_deep`
-- [ ] `test_distribute_deep_to_listing`
-- [ ] `test_claim_deep`
-- [ ] `test_deep_per_share_calculation`
+- [ ] `test_start_distribution`
+- [ ] `test_claim_deep_proportional`
+- [ ] `test_claim_deep_multiple_backers`
 
 ### 10.2 Integration Tests
 
-- [ ] Full flash liquidation with real DeepBook pool
-- [ ] Borrow → harvest → repay with dynamic rates
-- [ ] Hybrid loan with both Tide and DeepBook liquidity
+- [ ] Full lending pool lifecycle: deposit → borrow → repay → withdraw
+- [ ] Flash liquidation with DeepBook pool
 - [ ] DEEP reward distribution across multiple backers
+- [ ] E2E: Borrow → rewards auto-repay → flash liquidation of unhealthy loan
 
 ### 10.3 Stress Tests
 
 - [ ] High utilization scenario (>95%)
 - [ ] Multiple concurrent flash liquidations
-- [ ] DeepBook pool depletion handling
-- [ ] Rate spike handling
+- [ ] DeepBook pool low liquidity handling
 
 ---
 
-## 11. Deployment Plan
+## 11. Deployment Plan (Simplified)
 
 ### 11.1 Timeline
 
 | Phase | Feature | Duration | Dependencies | Status |
 |-------|---------|----------|--------------|--------|
-| **1A** | Flash Liquidate + Keep | 1 week | DeepBook only | 📋 Planned |
-| **1B** | Marketplace Bid System | 2 weeks | Marketplace v2 | 📋 Planned |
-| **1C** | Flash Liquidate + Sell | 1 week | 1A + 1B | 📋 Planned |
-| **2** | Dynamic Interest Rates | 1 week | None | 📋 Planned |
-| **3** | Hybrid Liquidity | 3-4 weeks | Phase 2 | 📋 Planned |
-| **4** | DEEP Token Rewards | 2-3 weeks | None | 📋 Planned |
-| **5** | Margin Trading | 8+ weeks | All above | 🔮 Future |
+| **1** | DeepBook Integration | 2-3 weeks | DeepBook | 📋 Planned |
+| **2** | Flash Liquidations | 1 week | Phase 1 | 📋 Planned |
+| **3** | DEEP Token Rewards | 1-2 weeks | None | 📋 Planned |
 
-**Recommended Order:** 1A → 2 → 1B → 1C → 3 → 4
+**Total: 4-6 weeks** (reduced from 10+ weeks)
 
-This allows:
-- Quick win with Phase 1A (1 week)
-- Dynamic rates deployed early (good for users)
-- Bid system developed in parallel
-- Full capital-free liquidations last
-
-### 11.2 Rollout Strategy
+### 11.2 Rollout Strategy (Simplified)
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                          DEPLOYMENT ROLLOUT                                  │
+│                      DEPLOYMENT ROLLOUT (SIMPLIFIED)                         │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                              │
-│  Week 1-2: Development                                                       │
-│  ├── Implement flash_liquidator.move                                        │
+│  Week 1-3: Phase 1 - DeepBook Integration                                   │
+│  ├── Create BalanceManager for Tide                                        │
+│  ├── Implement lending_pool.move                                           │
+│  ├── Integrate with pool::borrow_rate()                                    │
 │  ├── Write unit tests                                                        │
-│  └── Internal review                                                         │
+│  └── Deploy to testnet                                                       │
 │                                                                              │
-│  Week 3: Testnet                                                             │
-│  ├── Deploy to Sui testnet                                                   │
-│  ├── Integration testing with DeepBook testnet pools                        │
-│  └── Community testing (testnet)                                             │
+│  Week 4: Phase 2 - Flash Liquidations                                       │
+│  ├── Implement flash_liquidator.move (keep only)                           │
+│  ├── Write unit tests                                                        │
+│  └── Deploy to testnet                                                       │
 │                                                                              │
-│  Week 4: Audit                                                               │
-│  ├── External audit (incremental)                                           │
-│  ├── Fix findings                                                            │
-│  └── Re-test                                                                 │
+│  Week 5-6: Phase 3 - DEEP Token Rewards                                     │
+│  ├── Implement deep_rewards.move (simplified)                              │
+│  ├── Write unit tests                                                        │
+│  └── Deploy to testnet                                                       │
 │                                                                              │
-│  Week 5: Mainnet (Gradual)                                                   │
-│  ├── Day 1-3: Deploy with low limits (10 SUI max flash loan)               │
+│  Week 7+: Mainnet Rollout                                                   │
+│  ├── Day 1-3: Deploy with conservative limits                               │
 │  ├── Day 4-7: Monitor, increase limits if stable                            │
 │  └── Week 2+: Full rollout if no issues                                     │
-│                                                                              │
-│  Repeat for each phase...                                                    │
 │                                                                              │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -1485,9 +1437,9 @@ public fun disable_flash_liquidations(vault: &mut LoanVault, admin_cap: &AdminCa
 
 | Spec | Purpose |
 |------|---------|
-| [marketplace-v2.md](./marketplace-v2.md) | Bid System for instant_sell (required for Phase 1C) |
 | [self-paying-loans-v2.md](./self-paying-loans-v2.md) | Current loans architecture |
 | [tide-core-v1.md](./tide-core-v1.md) | Core protocol specification |
+| [marketplace-v2.md](./marketplace-v2.md) | Bid System (deferred) |
 
 ### B. Glossary
 
@@ -1582,13 +1534,13 @@ Based on the [DeepBook V3 Design](https://docs.sui.io/standards/deepbookv3/desig
 
 | Feature | Potential Use Case | Phase |
 |---------|-------------------|-------|
-| **BalanceManager** | Single fund source for all Tide-DeepBook interactions | Phase 3+ |
-| **Governance Participation** | Tide DAO votes on DeepBook fee parameters | v3 |
-| **Maker Rebates** | Tide earns rebates when providing liquidity | v3 |
-| **DeepPrice Oracle** | Use DeepBook's price data for collateral valuation | v3 |
-| **BigVector Order Book** | Direct market making on DeepBook with Tide treasury | v3 |
-| **Pool-Specific Staking** | Stake DEEP per pool for incentive eligibility | Phase 4+ |
-| **Whitelisted Pool** | Request whitelisted status for zero fees | v3 |
+| **BalanceManager** | Single fund source for all Tide-DeepBook interactions | Phase 1 ✅ |
+| **Governance Participation** | Tide DAO votes on DeepBook fee parameters | Future |
+| **Maker Rebates** | Tide earns rebates when providing liquidity | Future |
+| **DeepPrice Oracle** | Use DeepBook's price data for collateral valuation | Future |
+| **BigVector Order Book** | Direct market making on DeepBook with Tide treasury | Future |
+| **Pool-Specific Staking** | Stake DEEP per pool for incentive eligibility | Future |
+| **Whitelisted Pool** | Request whitelisted status for zero fees | Future |
 
 **Governance Fee Bounds (from DeepBook docs):**
 
