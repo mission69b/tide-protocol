@@ -1561,6 +1561,7 @@ async function checkAndLiquidate() {
     }
   }
 }
+```
 
 ### D. Comparison with Competitors
 
