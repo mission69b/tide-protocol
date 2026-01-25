@@ -849,6 +849,19 @@ The following features have been added to expand the v1 foundation:
 - 21 tests (14 unit + 7 E2E)
 - See: `spec/self-paying-loans-v2.md`
 
+### Future: DeepBook Integration (Planned)
+- Flash loan liquidations (Phase 1)
+- Dynamic interest rates (Phase 2)
+- Hybrid liquidity (Phase 3)
+- DEEP token rewards (Phase 4)
+- See: `spec/deepbook-integration-v1.md`
+
+### Future: Marketplace Bid System (Planned)
+- Buy orders with escrowed funds
+- Instant sell to best bid
+- Capital-free flash liquidations
+- See: `spec/marketplace-v2.md`
+
 ### Core Enhancements ✅
 - SupporterPass provenance fields (`pass_number`, `original_backer`, `total_claimed`)
 - `claim_many` batch claiming

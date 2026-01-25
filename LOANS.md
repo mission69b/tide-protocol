@@ -249,8 +249,19 @@ sui move test
 sui move test --coverage
 ```
 
+## Future: DeepBook Integration
+
+Planned enhancements via DeepBook V3:
+- **Phase 1:** Flash loan liquidations (capital-free)
+- **Phase 2:** Dynamic interest rates (utilization-based)
+- **Phase 3:** Hybrid liquidity (source from DeepBook pools)
+- **Phase 4:** DEEP token rewards for backers
+
+See [spec/deepbook-integration-v1.md](./spec/deepbook-integration-v1.md) for the full specification.
+
 ## Related Documentation
 
 - [Main README](./README.md) - Protocol overview
 - [Self-Paying Loans Spec](./spec/self-paying-loans-v2.md) - Full technical specification
+- [DeepBook Integration Spec](./spec/deepbook-integration-v1.md) - Flash loans & dynamic rates (planned)
 - [Tide Core v1 Spec](./spec/tide-core-v1.md) - Core protocol specification

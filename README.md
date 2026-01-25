@@ -510,8 +510,11 @@ tide-protocol/
 │
 ├── spec/
 │   ├── tide-core-v1.md          # Locked specification
-│   ├── marketplace-v1.md        # Marketplace specification
+│   ├── marketplace-v1.md        # Marketplace specification (current)
+│   ├── marketplace-v2.md        # Marketplace bid system (planned)
 │   ├── self-paying-loans-v2.md  # Self-paying loans design (v2)
+│   ├── deepbook-integration-v1.md # DeepBook integration (planned)
+│   ├── frontend-spec.md         # Frontend/API specification
 │   └── invariants.md            # Audit-ready invariant list
 │
 ├── scripts/

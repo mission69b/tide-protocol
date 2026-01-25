@@ -165,6 +165,28 @@ For each invariant:
 
 ---
 
+## Bid System Invariants (v2 - Planned)
+
+| ID | Invariant | Location |
+|----|-----------|----------|
+| B1 | Escrowed funds MUST only exit via fill or cancel | `buy_order.move` |
+| B2 | Only order owner can cancel buy order | `buy_order.move` |
+| B3 | instant_sell MUST match order criteria | `marketplace.move` |
+| B4 | Order cannot be partially filled (v2) | `marketplace.move` |
+| B5 | Expired orders CANNOT be filled | `buy_order.move` |
+
+---
+
+## Flash Liquidation Invariants (Planned)
+
+| ID | Invariant | Location |
+|----|-----------|----------|
+| FL1 | Flash loan MUST be repaid within same transaction | `flash_liquidator.move` |
+| FL2 | Liquidation MUST only occur when health factor < 1.0 | `flash_liquidator.move` |
+| FL3 | Profit MUST be verifiable before execution | `flash_liquidator.move` |
+
+---
+
 ## Invariant Violation Response
 
 If an invariant is violated:
