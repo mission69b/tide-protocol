@@ -573,6 +573,14 @@ See [LOANS.md](./LOANS.md) for:
 - Keeper model for harvesting
 - Liquidation mechanics
 
+### DeepBook Integration (Planned)
+
+See [spec/deepbook-integration-v1.md](./spec/deepbook-integration-v1.md) for planned enhancements:
+- **Phase 1:** Flash loan liquidations (capital-free liquidations)
+- **Phase 2:** Dynamic interest rates (utilization-based)
+- **Phase 3:** Hybrid liquidity (source from DeepBook pools)
+- **Phase 4:** DEEP token rewards for backers
+
 ## Protocol Integrations
 
 **Want to integrate your protocol with Tide?** See our partner guides:
