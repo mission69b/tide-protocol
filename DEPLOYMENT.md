@@ -490,38 +490,65 @@ export VALIDATOR=0x...          # Active testnet validator
 
 ---
 
-### Testing Order (Important!)
+### State Requirements (What Requires Finalization?)
 
-Operations must be performed in the correct order due to state requirements:
+| Operation | Requires Finalized? | Prerequisite |
+|-----------|---------------------|--------------|
+| **Deposit** | ❌ No | Listing is Active |
+| **Route Revenue** | ❌ No | FaithRouter exists |
+| **Claim Rewards** | ❌ No | RewardVault has funds |
+| **Marketplace (list/buy)** | ❌ No | Have a SupporterPass |
+| **Loans (borrow/repay)** | ❌ No | Have a SupporterPass |
+| **Stake Capital** | ✅ **Yes** | Listing Finalized + has locked capital |
+| **Collect Raise Fee** | ✅ **Yes** | Listing Finalized |
+| **Release Tranche** | ✅ **Yes** | Listing Finalized + tranche time passed |
+| **Harvest Staking** | ✅ **Yes** | Capital staked + 1 epoch passed |
+
+### Testing Order
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                         TESTING ORDER                                        │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                              │
-│  1. DEPOSIT          (Listing must be Active)                               │
-│        │                                                                     │
-│        ▼                                                                     │
-│  2. FINALIZE         (After funding deadline OR min raised)                 │
+│  ═══════════════════ CAN TEST NOW (Listing Active) ═══════════════════     │
+│                                                                              │
+│  1. DEPOSIT           → Get SupporterPass                                   │
+│  2. ROUTE REVENUE     → Simulate artist payment                             │
+│  3. CLAIM REWARDS     → Claim your share from RewardVault                   │
+│  4. MARKETPLACE       → List/Buy/Delist passes                              │
+│  5. LOANS             → Borrow/Repay against pass                           │
+│                                                                              │
+│  ═══════════════════ REQUIRES FINALIZATION ════════════════════════════    │
+│                                                                              │
+│  6. FINALIZE          → After funding deadline                              │
 │        │                                                                     │
 │        ├─────────────────────┐                                              │
 │        ▼                     ▼                                              │
-│  3a. COLLECT FEE     3b. STAKE CAPITAL                                     │
+│  7a. COLLECT FEE      7b. STAKE CAPITAL                                    │
 │        │                     │                                              │
-│        ▼                     ▼                                              │
-│  4. ROUTE REVENUE    (Wait 1 epoch for staking rewards)                    │
+│        │                     ▼                                              │
+│        │              (Wait 1 epoch ~24h)                                   │
 │        │                     │                                              │
-│        ▼                     ▼                                              │
-│  5. CLAIM REWARDS    5b. HARVEST STAKING                                   │
+│        │                     ▼                                              │
+│        │              8. HARVEST STAKING                                    │
 │        │                                                                     │
 │        ▼                                                                     │
-│  6. RELEASE TRANCHE  (When tranche time arrives)                           │
-│                                                                              │
-│  PARALLEL FLOWS (after step 1):                                             │
-│  • MARKETPLACE: List → Buy → Delist                                        │
-│  • LOANS: Borrow → Repay/Harvest → Withdraw                                │
+│  9. RELEASE TRANCHE   → When tranche time arrives                          │
 │                                                                              │
 └─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Quick Test Flow (Before Finalization)
+
+Test the core flows without waiting for finalization:
+
+```bash
+# 1. Deposit (if not done)
+# 2. Route Revenue
+# 3. Claim Rewards
+# 4. List on Marketplace → Buy → Delist
+# 5. Borrow Loan → Repay → Withdraw Collateral
 ```
 
 ---
@@ -1129,31 +1156,29 @@ sui client ptb \
 
 ### Testnet Testing (Follow this order!)
 
-**Phase 1: Deposit & Finalize**
+**Phase 1: Core Flows (No Finalization Required)**
 - [ ] Deposit SUI (get SupporterPass)
-- [ ] Finalize listing (after deadline or min raised)
-- [ ] Collect raise fee (1% to treasury)
-
-**Phase 2: Revenue & Claims**
 - [ ] Route test revenue via FaithRouter
 - [ ] Claim rewards (verify receipt)
-- [ ] Claim many (batch test)
-
-**Phase 3: Staking**
-- [ ] Stake locked capital
-- [ ] Wait 1 epoch (~24h)
-- [ ] Harvest staking rewards via FaithRouter
-
-**Phase 4: Marketplace**
-- [ ] List SupporterPass for sale
-- [ ] Buy SupporterPass (different wallet)
+- [ ] List SupporterPass on marketplace
+- [ ] Buy SupporterPass (same or different wallet)
 - [ ] Delist SupporterPass
-
-**Phase 5: Loans**
 - [ ] Borrow against SupporterPass
 - [ ] Repay loan
 - [ ] Withdraw collateral
+
+**Phase 2: Finalization & Post-Finalize Flows**
+- [ ] Finalize listing (after deadline or min raised)
+- [ ] Collect raise fee (1% to treasury)
+- [ ] Stake locked capital
+- [ ] Wait 1 epoch (~24h)
+- [ ] Harvest staking rewards via FaithRouter
+- [ ] Release tranche (when time arrives)
+
+**Phase 3: Edge Cases**
+- [ ] Claim many (batch test)
 - [ ] Test liquidation (make loan unhealthy)
+- [ ] Test pause/unpause (admin)
 
 ### Pre-Mainnet
 - [ ] Security audit completed
