@@ -266,23 +266,45 @@ sui client ptb \
 
 ### 7.1 Update Display URLs (Optional)
 
-Only run these if you need different URLs:
+Only run these if you need different URLs. Use the standard Sui Display module:
+
+```bash
+# Step 1: Update image URL
+sui client ptb \
+  --assign display @$DISPLAY_ID \
+  --move-call "0x2::display::edit<$PACKAGE_ID::supporter_pass::SupporterPass>" display '"image_url"' '"https://your-api.com/passes/{id}/image"' \
+  --gas-budget 50000000
+
+# Step 2: Update link (optional)
+sui client ptb \
+  --assign display @$DISPLAY_ID \
+  --move-call "0x2::display::edit<$PACKAGE_ID::supporter_pass::SupporterPass>" display '"link"' '"https://your-app.com/portfolio"' \
+  --gas-budget 50000000
+
+# Step 3: Commit changes (REQUIRED after any edits)
+sui client ptb \
+  --assign display @$DISPLAY_ID \
+  --move-call "0x2::display::update_version<$PACKAGE_ID::supporter_pass::SupporterPass>" display \
+  --gas-budget 50000000
+```
+
+**Example with actual testnet values:**
 
 ```bash
 # Update image URL
 sui client ptb \
-  --assign pkg @$PACKAGE_ID \
-  --assign display @$DISPLAY_ID \
-  --move-call "pkg::display::update_image_url" display "b\"https://your-api.com/pass/{listing_id}/{id}/image.svg\"" \
+  --assign display @0xc6dafcd68e9a5e2415f196bd2bfa6cabd5ff6dbfe0b72aa3266664de9b2ef46f \
+  --move-call "0x2::display::edit<0xbf119a288b73ea42990f87a978c376d168b35439ce06c28d16fc8f5cfe2ebbae::supporter_pass::SupporterPass>" display '"image_url"' '"https://tide.am/api/passes/{id}/image"' \
   --gas-budget 50000000
 
-# Update link
+# Commit changes
 sui client ptb \
-  --assign pkg @$PACKAGE_ID \
-  --assign display @$DISPLAY_ID \
-  --move-call "pkg::display::update_link" display "b\"https://your-app.com/listing/{listing_id}/pass/{id}\"" \
+  --assign display @0xc6dafcd68e9a5e2415f196bd2bfa6cabd5ff6dbfe0b72aa3266664de9b2ef46f \
+  --move-call "0x2::display::update_version<0xbf119a288b73ea42990f87a978c376d168b35439ce06c28d16fc8f5cfe2ebbae::supporter_pass::SupporterPass>" display \
   --gas-budget 50000000
 ```
+
+> **Note:** The `{id}` placeholder is automatically replaced by Sui with the SupporterPass object ID.
 
 If the default URLs work for you, **skip to Step 8**.
 
@@ -468,9 +490,65 @@ export VALIDATOR=0x...          # Active testnet validator
 
 ---
 
+### Testing Order (Important!)
+
+Operations must be performed in the correct order due to state requirements:
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         TESTING ORDER                                        │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  1. DEPOSIT          (Listing must be Active)                               │
+│        │                                                                     │
+│        ▼                                                                     │
+│  2. FINALIZE         (After funding deadline OR min raised)                 │
+│        │                                                                     │
+│        ├─────────────────────┐                                              │
+│        ▼                     ▼                                              │
+│  3a. COLLECT FEE     3b. STAKE CAPITAL                                     │
+│        │                     │                                              │
+│        ▼                     ▼                                              │
+│  4. ROUTE REVENUE    (Wait 1 epoch for staking rewards)                    │
+│        │                     │                                              │
+│        ▼                     ▼                                              │
+│  5. CLAIM REWARDS    5b. HARVEST STAKING                                   │
+│        │                                                                     │
+│        ▼                                                                     │
+│  6. RELEASE TRANCHE  (When tranche time arrives)                           │
+│                                                                              │
+│  PARALLEL FLOWS (after step 1):                                             │
+│  • MARKETPLACE: List → Buy → Delist                                        │
+│  • LOANS: Borrow → Repay/Harvest → Withdraw                                │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
 ### Backer Operations
 
 #### Deposit SUI
+
+First, check your coins and pick one to deposit:
+
+```bash
+# List your coins
+sui client gas
+
+# Use an existing coin (e.g., a 1 SUI coin)
+export DEPOSIT_COIN_ID=<your_coin_id>
+
+# Or split from a large coin:
+sui client ptb \
+  --assign source @0x<large_coin_id> \
+  --split-coins source "[1000000000]" \
+  --assign deposit_coin \
+  --transfer-objects "[deposit_coin]" @$ME \
+  --gas-budget 10000000
+```
+
+Then deposit:
 
 ```bash
 sui client ptb \
@@ -486,6 +564,12 @@ sui client ptb \
   --assign supporter_pass \
   --transfer-objects "[supporter_pass]" me \
   --gas-budget 50000000
+```
+
+**Save the SupporterPass ID from the output!**
+
+```bash
+export SUPPORTER_PASS=<paste_supporter_pass_id_here>
 ```
 
 #### Claim Rewards
@@ -680,6 +764,23 @@ sui client ptb \
 ---
 
 ### Issuer Operations
+
+#### Simulate Revenue (For Testing)
+
+First, create a coin to simulate artist revenue:
+
+```bash
+# Split 1 SUI from a large coin to simulate revenue
+sui client ptb \
+  --assign source @$LARGE_COIN_ID \
+  --split-coins source "[1000000000]" \
+  --assign revenue_coin \
+  --transfer-objects "[revenue_coin]" @$ME \
+  --gas-budget 10000000
+
+# Note the new coin ID and set it
+export REVENUE_COIN_ID=<paste_coin_id_here>
+```
 
 #### Route Revenue via FaithRouter
 
@@ -1023,13 +1124,36 @@ sui client ptb \
 - [ ] Created FAITH listing (Listing #1)
 - [ ] Created FaithRouter
 - [ ] Activated listing
-- [ ] Tested deposit flow
-- [ ] Tested claim flow
-- [ ] Tested marketplace list/buy flow
-- [ ] Tested loans borrow/repay flow
-- [ ] Tested staking flow
 - [ ] Added liquidity to LoanVault
 - [ ] Saved deployment artifacts
+
+### Testnet Testing (Follow this order!)
+
+**Phase 1: Deposit & Finalize**
+- [ ] Deposit SUI (get SupporterPass)
+- [ ] Finalize listing (after deadline or min raised)
+- [ ] Collect raise fee (1% to treasury)
+
+**Phase 2: Revenue & Claims**
+- [ ] Route test revenue via FaithRouter
+- [ ] Claim rewards (verify receipt)
+- [ ] Claim many (batch test)
+
+**Phase 3: Staking**
+- [ ] Stake locked capital
+- [ ] Wait 1 epoch (~24h)
+- [ ] Harvest staking rewards via FaithRouter
+
+**Phase 4: Marketplace**
+- [ ] List SupporterPass for sale
+- [ ] Buy SupporterPass (different wallet)
+- [ ] Delist SupporterPass
+
+**Phase 5: Loans**
+- [ ] Borrow against SupporterPass
+- [ ] Repay loan
+- [ ] Withdraw collateral
+- [ ] Test liquidation (make loan unhealthy)
 
 ### Pre-Mainnet
 - [ ] Security audit completed

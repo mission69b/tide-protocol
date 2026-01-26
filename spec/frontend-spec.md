@@ -20,6 +20,7 @@
 9. [Wallet Integration](#9-wallet-integration)
 10. [Error Handling](#10-error-handling)
 11. [Security Considerations](#11-security-considerations)
+12. [Points Program](#12-points-program-incentivized-testnet--mainnet)
 
 ---
 
@@ -2020,6 +2021,511 @@ function formatCountdown(targetMs: number): string {
   return `${minutes}m`;
 }
 ```
+
+---
+
+## 12. Points Program (Incentivized Testnet & Mainnet)
+
+### 12.1 Overview
+
+The Points Program is an **off-chain** system that tracks user activity via on-chain events. No Move code changes are required—the protocol already emits all necessary events.
+
+**Goals:**
+- Incentivize testnet participation (bug hunting, stress testing)
+- Drive mainnet engagement (TVL, marketplace activity)
+- Build community and reward early adopters
+
+### 12.2 Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                      POINTS PROGRAM ARCHITECTURE                             │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  ┌──────────────────┐                                                       │
+│  │   Sui Network    │                                                       │
+│  │   (Events)       │                                                       │
+│  └────────┬─────────┘                                                       │
+│           │                                                                  │
+│           ▼                                                                  │
+│  ┌──────────────────┐     ┌──────────────────┐     ┌──────────────────┐    │
+│  │  Event Indexer   │────▶│  Points Engine   │────▶│    Database      │    │
+│  │  (listener)      │     │  (calculate)     │     │  (PostgreSQL)    │    │
+│  └──────────────────┘     └──────────────────┘     └────────┬─────────┘    │
+│                                                              │              │
+│                                                              ▼              │
+│                                                    ┌──────────────────┐    │
+│                                                    │   REST API       │    │
+│                                                    │   /api/points/*  │    │
+│                                                    └────────┬─────────┘    │
+│                                                              │              │
+│                                                              ▼              │
+│                                                    ┌──────────────────┐    │
+│                                                    │    Frontend      │    │
+│                                                    │  - Leaderboard   │    │
+│                                                    │  - Profile       │    │
+│                                                    │  - Quests        │    │
+│                                                    └──────────────────┘    │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### 12.3 Events to Track
+
+All events are already emitted by the protocol:
+
+| Event | Module | Points Action |
+|-------|--------|---------------|
+| `CapitalDeposited` | `listing` | Deposit points |
+| `RewardsClaimed` | `listing` | Claim activity |
+| `RewardsClaimedMany` | `listing` | Batch claim activity |
+| `SaleListingCreated` | `marketplace` | Marketplace listing |
+| `SaleListingPurchased` | `marketplace` | Marketplace purchase |
+| `SaleListingDelisted` | `marketplace` | (No points, just track) |
+| `LoanCreated` | `loan_vault` | Loan usage |
+| `LoanRepaid` | `loan_vault` | Healthy repayment |
+| `LoanLiquidated` | `loan_vault` | (Negative? Or neutral) |
+| `KioskClaim` | `kiosk_ext` | Kiosk claiming |
+| `StakingEnabled` | `staking_adapter` | (Admin action, no points) |
+| `StakingRewardsHarvested` | `listing` | Staking activity |
+
+### 12.4 Points Rules
+
+#### 12.4.1 Testnet Points
+
+| Action | Points | Notes |
+|--------|--------|-------|
+| **Deposit** | 10 per SUI | Encourages capital testing |
+| **Claim Rewards** | 5 per claim | Tests claiming flow |
+| **List on Marketplace** | 10 per listing | Tests marketplace |
+| **Buy on Marketplace** | 15 per purchase | Tests buying flow |
+| **Borrow Loan** | 20 per loan | Tests loan feature |
+| **Repay Loan** | 25 per repayment | Tests healthy behavior |
+| **Complete All Actions** | 100 bonus | Full flow testing |
+| **Report Valid Bug** | 500-5000 | Quality assurance |
+| **First 100 Users** | 500 bonus | Early adopter |
+
+#### 12.4.2 Mainnet Points
+
+| Action | Points | Multiplier |
+|--------|--------|------------|
+| **Deposit** | 1 per SUI | 2x for first week |
+| **Hold Pass 7+ days** | 50 per week | Loyalty bonus |
+| **Claim Rewards** | 2 per claim | — |
+| **Marketplace Sale** | 1% of sale price | Seller + Buyer split |
+| **Borrow Loan** | 5 per loan | — |
+| **Repay Loan (no liquidation)** | 10 per repayment | — |
+| **Referral** | 100 + 10% of referee | Off-chain tracking |
+
+#### 12.4.3 Multipliers & Bonuses
+
+```typescript
+const MULTIPLIERS = {
+  // Time-based
+  first_week: 2.0,
+  first_month: 1.5,
+  
+  // Tier-based (based on total points)
+  bronze: 1.0,    // 0-999 points
+  silver: 1.1,    // 1000-4999 points
+  gold: 1.25,     // 5000-19999 points
+  platinum: 1.5,  // 20000+ points
+  
+  // Special
+  og_backer: 1.5, // Backed before mainnet
+  bug_hunter: 1.2, // Reported valid bug
+};
+```
+
+### 12.5 Data Model
+
+#### 12.5.1 Database Schema
+
+```sql
+-- Users table
+CREATE TABLE users (
+  address VARCHAR(66) PRIMARY KEY,
+  total_points BIGINT DEFAULT 0,
+  testnet_points BIGINT DEFAULT 0,
+  mainnet_points BIGINT DEFAULT 0,
+  tier VARCHAR(20) DEFAULT 'bronze',
+  referral_code VARCHAR(20) UNIQUE,
+  referred_by VARCHAR(66),
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Points history
+CREATE TABLE points_history (
+  id SERIAL PRIMARY KEY,
+  user_address VARCHAR(66) NOT NULL,
+  action VARCHAR(50) NOT NULL,
+  points BIGINT NOT NULL,
+  multiplier DECIMAL(4,2) DEFAULT 1.0,
+  tx_digest VARCHAR(66),
+  event_data JSONB,
+  network VARCHAR(20) NOT NULL, -- 'testnet' or 'mainnet'
+  created_at TIMESTAMP DEFAULT NOW(),
+  
+  FOREIGN KEY (user_address) REFERENCES users(address)
+);
+
+-- Leaderboard (materialized view for performance)
+CREATE MATERIALIZED VIEW leaderboard AS
+SELECT 
+  address,
+  total_points,
+  tier,
+  RANK() OVER (ORDER BY total_points DESC) as rank
+FROM users
+ORDER BY total_points DESC;
+
+-- Quests tracking
+CREATE TABLE quests (
+  id SERIAL PRIMARY KEY,
+  user_address VARCHAR(66) NOT NULL,
+  quest_id VARCHAR(50) NOT NULL,
+  completed BOOLEAN DEFAULT FALSE,
+  completed_at TIMESTAMP,
+  points_awarded BIGINT DEFAULT 0,
+  
+  UNIQUE(user_address, quest_id)
+);
+```
+
+#### 12.5.2 Quest Definitions
+
+```typescript
+interface Quest {
+  id: string;
+  name: string;
+  description: string;
+  points: number;
+  requirements: QuestRequirement[];
+  repeatable: boolean;
+  expiresAt?: number;
+}
+
+const QUESTS: Quest[] = [
+  {
+    id: 'first_deposit',
+    name: 'First Deposit',
+    description: 'Make your first deposit to back an artist',
+    points: 100,
+    requirements: [{ type: 'deposit', count: 1 }],
+    repeatable: false,
+  },
+  {
+    id: 'diamond_hands',
+    name: 'Diamond Hands',
+    description: 'Hold a SupporterPass for 30 days',
+    points: 500,
+    requirements: [{ type: 'hold_duration', days: 30 }],
+    repeatable: false,
+  },
+  {
+    id: 'marketplace_trader',
+    name: 'Marketplace Trader',
+    description: 'Complete 5 marketplace transactions',
+    points: 250,
+    requirements: [{ type: 'marketplace_tx', count: 5 }],
+    repeatable: false,
+  },
+  {
+    id: 'loan_master',
+    name: 'Loan Master',
+    description: 'Borrow and fully repay a loan',
+    points: 300,
+    requirements: [
+      { type: 'borrow', count: 1 },
+      { type: 'repay_full', count: 1 },
+    ],
+    repeatable: false,
+  },
+  {
+    id: 'weekly_claimer',
+    name: 'Weekly Claimer',
+    description: 'Claim rewards every week for 4 weeks',
+    points: 200,
+    requirements: [{ type: 'claim_weekly', weeks: 4 }],
+    repeatable: true,
+  },
+];
+```
+
+### 12.6 API Endpoints
+
+#### 12.6.1 Points API
+
+```typescript
+// GET /api/points/user/:address
+interface UserPointsResponse {
+  address: string;
+  totalPoints: number;
+  testnetPoints: number;
+  mainnetPoints: number;
+  tier: 'bronze' | 'silver' | 'gold' | 'platinum';
+  rank: number;
+  totalUsers: number;
+  referralCode: string;
+  referralCount: number;
+  multipliers: {
+    current: number;
+    breakdown: { name: string; value: number }[];
+  };
+}
+
+// GET /api/points/leaderboard
+interface LeaderboardResponse {
+  users: {
+    rank: number;
+    address: string;
+    points: number;
+    tier: string;
+  }[];
+  pagination: {
+    page: number;
+    pageSize: number;
+    total: number;
+  };
+}
+
+// GET /api/points/history/:address
+interface PointsHistoryResponse {
+  history: {
+    action: string;
+    points: number;
+    multiplier: number;
+    txDigest: string;
+    timestamp: number;
+  }[];
+  pagination: Pagination;
+}
+
+// GET /api/points/quests/:address
+interface QuestsResponse {
+  quests: {
+    id: string;
+    name: string;
+    description: string;
+    points: number;
+    completed: boolean;
+    progress: number; // 0-100
+    completedAt?: number;
+  }[];
+}
+
+// POST /api/points/referral
+interface ReferralRequest {
+  referrerCode: string;
+  newUserAddress: string;
+  signature: string; // Prove ownership of address
+}
+```
+
+### 12.7 Frontend Components
+
+#### 12.7.1 Points Dashboard
+
+```typescript
+interface PointsDashboardProps {
+  userAddress: string;
+}
+
+// Components needed:
+// - PointsSummaryCard: Total points, tier, rank
+// - PointsHistoryTable: Recent point earnings
+// - QuestsGrid: Available and completed quests
+// - LeaderboardTable: Top users
+// - ReferralCard: Referral code and stats
+// - MultiplierBadges: Active multipliers
+```
+
+#### 12.7.2 Leaderboard Page
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           🏆 LEADERBOARD                                     │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  Your Rank: #42 of 1,234 users                                              │
+│  Your Points: 15,450 (Gold Tier)                                            │
+│                                                                              │
+│  ┌────────────────────────────────────────────────────────────────────────┐ │
+│  │ Rank │ Address          │ Points    │ Tier     │                       │ │
+│  ├──────┼──────────────────┼───────────┼──────────┼───────────────────────┤ │
+│  │  🥇  │ 0xabc1...2def   │ 125,400   │ Platinum │ ████████████████████  │ │
+│  │  🥈  │ 0x1234...5678   │ 98,200    │ Platinum │ ███████████████▌      │ │
+│  │  🥉  │ 0xfed9...8cba   │ 87,500    │ Platinum │ ██████████████        │ │
+│  │  4   │ 0x9876...5432   │ 72,100    │ Gold     │ ███████████▌          │ │
+│  │  5   │ 0xabcd...efgh   │ 65,300    │ Gold     │ ██████████▌           │ │
+│  │  ... │ ...              │ ...       │ ...      │                       │ │
+│  │  42  │ 0xYOUR...ADDR   │ 15,450    │ Gold     │ ██▌                   │ │
+│  └────────────────────────────────────────────────────────────────────────┘ │
+│                                                                              │
+│  [< Prev]  Page 1 of 25  [Next >]                                           │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+#### 12.7.3 Quests Panel
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           📋 QUESTS                                          │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  ┌─────────────────────────────────────────────────────────────┐            │
+│  │  ✅ First Deposit                               +100 pts    │            │
+│  │  Make your first deposit to back an artist                  │            │
+│  │  [COMPLETED]                                                 │            │
+│  └─────────────────────────────────────────────────────────────┘            │
+│                                                                              │
+│  ┌─────────────────────────────────────────────────────────────┐            │
+│  │  🔄 Diamond Hands                               +500 pts    │            │
+│  │  Hold a SupporterPass for 30 days                           │            │
+│  │  Progress: ████████░░░░░░░░░░░░ 12/30 days                  │            │
+│  └─────────────────────────────────────────────────────────────┘            │
+│                                                                              │
+│  ┌─────────────────────────────────────────────────────────────┐            │
+│  │  ⬜ Marketplace Trader                          +250 pts    │            │
+│  │  Complete 5 marketplace transactions                        │            │
+│  │  Progress: ██░░░░░░░░░░░░░░░░░░ 1/5 transactions            │            │
+│  └─────────────────────────────────────────────────────────────┘            │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+#### 12.7.4 Referral Card
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           🔗 REFERRALS                                       │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  Your Referral Code: TIDE-ABC123                                            │
+│                                                                              │
+│  Share this link: https://tide.fi/r/TIDE-ABC123        [📋 Copy]            │
+│                                                                              │
+│  ┌───────────────────────────────────────────────────────────┐              │
+│  │  Referrals: 12 users                                      │              │
+│  │  Points Earned: 1,200 (100 per referral)                  │              │
+│  │  Bonus Points: 340 (10% of referee earnings)              │              │
+│  └───────────────────────────────────────────────────────────┘              │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### 12.8 Event Processor
+
+```typescript
+// Example event processor implementation
+import { SuiClient, SuiEventFilter } from '@mysten/sui/client';
+
+interface PointsProcessor {
+  processEvent(event: SuiEvent): Promise<void>;
+}
+
+class TidePointsProcessor implements PointsProcessor {
+  private readonly POINTS_RULES: Record<string, (event: any) => number> = {
+    'CapitalDeposited': (e) => Math.floor(e.amount / 1_000_000_000) * 10,
+    'RewardsClaimed': () => 5,
+    'RewardsClaimedMany': (e) => 5 * e.pass_count,
+    'SaleListingCreated': () => 10,
+    'SaleListingPurchased': (e) => Math.floor(e.price / 1_000_000_000) * 0.01,
+    'LoanCreated': () => 20,
+    'LoanRepaid': () => 25,
+  };
+
+  async processEvent(event: SuiEvent): Promise<void> {
+    const eventType = event.type.split('::').pop();
+    const pointsCalculator = this.POINTS_RULES[eventType];
+    
+    if (!pointsCalculator) return;
+    
+    const basePoints = pointsCalculator(event.parsedJson);
+    const userAddress = this.extractUserAddress(event);
+    const multiplier = await this.getUserMultiplier(userAddress);
+    const finalPoints = Math.floor(basePoints * multiplier);
+    
+    await this.awardPoints({
+      userAddress,
+      action: eventType,
+      points: finalPoints,
+      multiplier,
+      txDigest: event.id.txDigest,
+      eventData: event.parsedJson,
+    });
+    
+    await this.checkQuestProgress(userAddress, eventType);
+  }
+  
+  private async getUserMultiplier(address: string): Promise<number> {
+    const user = await db.users.findOne({ address });
+    if (!user) return 1.0;
+    
+    let multiplier = 1.0;
+    
+    // Tier multiplier
+    multiplier *= TIER_MULTIPLIERS[user.tier] || 1.0;
+    
+    // Time-based multiplier
+    if (isFirstWeek()) multiplier *= 2.0;
+    else if (isFirstMonth()) multiplier *= 1.5;
+    
+    // Special badges
+    if (user.badges.includes('og_backer')) multiplier *= 1.5;
+    if (user.badges.includes('bug_hunter')) multiplier *= 1.2;
+    
+    return multiplier;
+  }
+}
+
+// Start listening
+const client = new SuiClient({ url: 'https://fullnode.mainnet.sui.io' });
+
+const filter: SuiEventFilter = {
+  MoveEventModule: {
+    package: TIDE_CORE_PACKAGE_ID,
+    module: 'events',
+  },
+};
+
+const processor = new TidePointsProcessor();
+
+const unsubscribe = await client.subscribeEvent({
+  filter,
+  onMessage: (event) => processor.processEvent(event),
+});
+```
+
+### 12.9 Implementation Timeline
+
+| Week | Tasks |
+|------|-------|
+| **1** | Database schema, Event processor, Basic API |
+| **2** | Leaderboard, Points history, Frontend components |
+| **3** | Quests system, Referral tracking |
+| **4** | Testing, Bug fixes, Testnet launch |
+
+### 12.10 Security Considerations
+
+| Risk | Mitigation |
+|------|------------|
+| **Sybil attacks** | Rate limiting, minimum deposit thresholds |
+| **Wash trading** | Detect same-wallet transfers, cooldowns |
+| **Referral fraud** | Require minimum activity from referee |
+| **Point manipulation** | All points derived from on-chain events |
+| **Leaderboard gaming** | Regular audits, suspicious activity flags |
+
+### 12.11 Future Enhancements
+
+| Feature | Priority | Description |
+|---------|----------|-------------|
+| NFT badges | Medium | Soulbound NFTs for achievements |
+| Seasons | Medium | Reset leaderboard periodically |
+| Token conversion | Low | Convert points to governance token |
+| Team competitions | Low | Compete as groups |
 
 ---
 
