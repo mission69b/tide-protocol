@@ -839,6 +839,111 @@ sui client ptb \
 
 ---
 
+### ⚠️ Staking & Tranche Coordination (Important)
+
+> **Security Audit Finding M-02:** This section documents the coordination requirements between staking operations and tranche releases.
+
+#### The Coordination Problem
+
+When capital is staked with a validator:
+1. Funds are locked in `StakedSui` objects (not in `CapitalVault.balance`)
+2. If a tranche release is triggered while capital is staked, the release will send **less than scheduled**
+3. The contract handles this gracefully by releasing what's available, but issuers may receive less than expected
+
+#### Coordination Rules
+
+| Operation | Requirement |
+|-----------|-------------|
+| **Before Tranche Release** | Ensure capital is unstaked and available |
+| **After Harvest** | Re-stake happens automatically |
+| **Before Cancel** | Must unstake first (enforced by contract) |
+
+#### Recommended Workflow
+
+```
+Timeline:
+Day 0:   Listing Finalized
+         ├── Collect Raise Fee (1%)
+         └── Stake All Capital
+         
+Day 1+:  Harvest Staking Rewards (permissionless, after epoch boundary)
+         
+Day N-1: Tranche Release Date approaching
+         ├── Unstake Capital (returns SUI to CapitalVault)
+         └── Wait for unstaking to complete
+         
+Day N:   Release Tranche
+         └── Re-stake remaining capital
+```
+
+#### Pre-Tranche Checklist
+
+Before a scheduled tranche release:
+
+1. **Check Staking Status**
+   ```bash
+   # View StakingAdapter state (check staked_principal)
+   sui client object $STAKING_ADAPTER
+   ```
+
+2. **Unstake if Needed**
+   ```bash
+   sui client ptb \
+     --assign pkg @$PKG \
+     --assign listing @$LISTING \
+     --assign tide @$TIDE \
+     --assign council_cap @$COUNCIL_CAP \
+     --assign staking_adapter @$STAKING_ADAPTER \
+     --assign system_state @$SYSTEM_STATE \
+     --assign me @$ME \
+     --move-call "pkg::listing::unstake_all" listing tide council_cap staking_adapter system_state \
+     --assign unstaked_coin \
+     --transfer-objects "[unstaked_coin]" me \
+     --gas-budget 100000000
+   ```
+   
+3. **Return Funds to CapitalVault** (if withdrawn to your wallet)
+   ```bash
+   # Deposit the unstaked funds back to CapitalVault
+   # This happens automatically if you use harvest_and_route
+   ```
+
+4. **Release Tranche**
+   ```bash
+   sui client ptb \
+     --assign pkg @$PKG \
+     --assign listing @$LISTING \
+     --assign tide @$TIDE \
+     --assign capital_vault @$CAPITAL_VAULT \
+     --assign clock @$CLOCK \
+     --move-call "pkg::listing::release_next_ready_tranche" listing tide capital_vault clock \
+     --gas-budget 50000000
+   ```
+
+5. **Re-stake Remaining**
+   ```bash
+   sui client ptb \
+     --assign pkg @$PKG \
+     --assign listing @$LISTING \
+     --assign tide @$TIDE \
+     --assign council_cap @$COUNCIL_CAP \
+     --assign capital_vault @$CAPITAL_VAULT \
+     --assign staking_adapter @$STAKING_ADAPTER \
+     --assign system_state @$SYSTEM_STATE \
+     --move-call "pkg::listing::stake_all_locked_capital" listing tide council_cap capital_vault staking_adapter system_state \
+     --gas-budget 100000000
+   ```
+
+#### Automation Recommendation
+
+For production, implement a keeper bot that:
+1. Monitors upcoming tranche release dates
+2. Automatically unstakes 24-48 hours before release
+3. Triggers release when ready
+4. Re-stakes remaining capital
+
+---
+
 ### Marketplace Operations
 
 #### List SupporterPass for Sale

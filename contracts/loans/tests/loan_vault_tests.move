@@ -249,23 +249,23 @@ fun test_borrow() {
         let capital_vault = ts::take_shared<CapitalVault>(&scenario);
         let pass = ts::take_from_sender<SupporterPass>(&scenario);
         
-        // Borrow 50% LTV = 50 SUI
+        // Borrow 40% LTV = 40 SUI (max with new conservative LTV)
         let (receipt, loan_coin) = loan_vault::borrow(
             &mut vault,
             &listing,
             &tide,
             &capital_vault,
             pass,
-            50 * ONE_SUI,
+            40 * ONE_SUI,
             ts::ctx(&mut scenario),
         );
         
-        // After 1% origination fee, should receive ~49.5 SUI
-        assert!(loan_coin.value() == 49_500_000_000, 0);
+        // After 1% origination fee, should receive ~39.6 SUI (40 - 1%)
+        assert!(loan_coin.value() == 39_600_000_000, 0);
         
         // Vault state updated
         assert!(loan_vault::active_loans(&vault) == 1, 1);
-        assert!(loan_vault::total_borrowed(&vault) == 50 * ONE_SUI, 2);
+        assert!(loan_vault::total_borrowed(&vault) == 40 * ONE_SUI, 2);
         
         transfer::public_transfer(receipt, BACKER);
         transfer::public_transfer(loan_coin, BACKER);
@@ -302,7 +302,7 @@ fun test_manual_repay_full() {
             &tide,
             &capital_vault,
             pass,
-            50 * ONE_SUI,
+            40 * ONE_SUI,
             ts::ctx(&mut scenario),
         );
         
@@ -320,10 +320,10 @@ fun test_manual_repay_full() {
         let mut vault = ts::take_shared<LoanVault>(&scenario);
         let receipt = ts::take_from_sender<LoanReceipt>(&scenario);
         
-        let payment = coin::mint_for_testing<SUI>(60 * ONE_SUI, ts::ctx(&mut scenario));
+        let payment = coin::mint_for_testing<SUI>(50 * ONE_SUI, ts::ctx(&mut scenario));
         let refund = loan_vault::repay(&mut vault, &receipt, payment, ts::ctx(&mut scenario));
         
-        // Should have refund (paid 60, owed ~50)
+        // Should have refund (paid 50, owed ~40)
         assert!(refund.value() > 9 * ONE_SUI, 0);
         
         // Active loans should be 0 now
@@ -361,7 +361,7 @@ fun test_withdraw_collateral_after_repay() {
             &tide,
             &capital_vault,
             pass,
-            50 * ONE_SUI,
+            40 * ONE_SUI,
             ts::ctx(&mut scenario),
         );
         
@@ -379,7 +379,7 @@ fun test_withdraw_collateral_after_repay() {
         let mut vault = ts::take_shared<LoanVault>(&scenario);
         let receipt = ts::take_from_sender<LoanReceipt>(&scenario);
         
-        let payment = coin::mint_for_testing<SUI>(60 * ONE_SUI, ts::ctx(&mut scenario));
+        let payment = coin::mint_for_testing<SUI>(50 * ONE_SUI, ts::ctx(&mut scenario));
         let refund = loan_vault::repay(&mut vault, &receipt, payment, ts::ctx(&mut scenario));
         
         transfer::public_transfer(refund, BACKER);
@@ -483,7 +483,7 @@ fun test_borrow_when_paused_fails() {
         ts::return_to_sender(&scenario, admin_cap);
     };
     
-    // Backer tries to borrow (should fail)
+    // Backer tries to borrow (should fail due to pause)
     ts::next_tx(&mut scenario, BACKER);
     {
         let mut vault = ts::take_shared<LoanVault>(&scenario);
@@ -498,7 +498,7 @@ fun test_borrow_when_paused_fails() {
             &tide,
             &capital_vault,
             pass,
-            50 * ONE_SUI,
+            40 * ONE_SUI, // Within LTV, should fail on pause check
             ts::ctx(&mut scenario),
         );
         
@@ -523,7 +523,7 @@ fun test_borrow_exceeds_ltv_fails() {
     deposit_as_backer(&mut scenario, HUNDRED_SUI);
     add_liquidity_to_vault(&mut scenario, HUNDRED_SUI);
     
-    // Backer tries to borrow more than 50% LTV
+    // Backer tries to borrow more than 40% LTV (max is 40%)
     ts::next_tx(&mut scenario, BACKER);
     {
         let mut vault = ts::take_shared<LoanVault>(&scenario);
@@ -532,7 +532,7 @@ fun test_borrow_exceeds_ltv_fails() {
         let capital_vault = ts::take_shared<CapitalVault>(&scenario);
         let pass = ts::take_from_sender<SupporterPass>(&scenario);
         
-        // Try to borrow 60 SUI on 100 SUI collateral (60% LTV, exceeds 50% max)
+        // Try to borrow 60 SUI on 100 SUI collateral (60% LTV, exceeds 40% max)
         let (receipt, loan_coin) = loan_vault::borrow(
             &mut vault,
             &listing,
@@ -565,7 +565,7 @@ fun test_borrow_insufficient_liquidity_fails() {
     
     // Note: No liquidity added to vault
     
-    // Backer tries to borrow
+    // Backer tries to borrow (should fail on insufficient liquidity)
     ts::next_tx(&mut scenario, BACKER);
     {
         let mut vault = ts::take_shared<LoanVault>(&scenario);
@@ -580,7 +580,7 @@ fun test_borrow_insufficient_liquidity_fails() {
             &tide,
             &capital_vault,
             pass,
-            50 * ONE_SUI,
+            40 * ONE_SUI, // Within LTV, should fail on liquidity check
             ts::ctx(&mut scenario),
         );
         
@@ -620,7 +620,7 @@ fun test_withdraw_before_repaid_fails() {
             &tide,
             &capital_vault,
             pass,
-            50 * ONE_SUI,
+            40 * ONE_SUI, // 40% LTV
             ts::ctx(&mut scenario),
         );
         
@@ -704,8 +704,8 @@ fun test_default_config() {
         
         let config = loan_vault::config(&vault);
         
-        // Default values
-        assert!(loan_vault::max_ltv_bps(&config) == 5000, 0); // 50%
+        // Default values (conservative for v1)
+        assert!(loan_vault::max_ltv_bps(&config) == 4000, 0); // 40%
         assert!(loan_vault::interest_rate_bps(&config) == 500, 1); // 5%
         
         ts::return_shared(vault);

@@ -61,6 +61,9 @@ const EStakedCapital: vector<u8> = b"Cannot cancel while capital is staked - uns
 #[error]
 const EAlreadyRefunded: vector<u8> = b"Pass has already been refunded";
 
+#[error]
+const EInvalidBps: vector<u8> = b"BPS value exceeds maximum (10000)";
+
 // === Public Functions (for cross-package use) ===
 
 public fun not_active(): u64 { 0 }
@@ -82,6 +85,7 @@ public fun not_cancelled(): u64 { 15 }
 public fun cannot_cancel(): u64 { 16 }
 public fun staked_capital(): u64 { 17 }
 public fun already_refunded(): u64 { 18 }
+public fun invalid_bps(): u64 { 19 }
 
 // === Test Constants (for expected_failure attributes) ===
 
@@ -123,3 +127,5 @@ const ECANNOT_CANCEL: u64 = 16;
 const ESTAKED_CAPITAL: u64 = 17;
 #[test_only]
 const EALREADY_REFUNDED: u64 = 18;
+#[test_only]
+const EINVALID_BPS: u64 = 19;

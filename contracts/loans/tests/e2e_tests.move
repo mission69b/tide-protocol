@@ -207,12 +207,12 @@ fun test_e2e_borrow_repay_withdraw() {
             &tide,
             &capital_vault,
             pass,
-            50 * ONE_SUI,
+            40 * ONE_SUI, // 40% LTV (max)
             ts::ctx(&mut scenario),
         );
         
-        // Verify loan proceeds (minus 1% origination fee)
-        assert!(loan_coin.value() == 49_500_000_000, 0);
+        // Verify loan proceeds (minus 1% origination fee): 40 SUI - 1% = 39.6 SUI
+        assert!(loan_coin.value() == 39_600_000_000, 0);
         
         // Verify vault state
         assert!(loan_vault::active_loans(&vault) == 1, 1);
@@ -418,7 +418,7 @@ fun test_e2e_multi_backer_loans() {
             &tide,
             &capital_vault,
             pass,
-            50 * ONE_SUI,
+            40 * ONE_SUI, // 40% LTV
             ts::ctx(&mut scenario),
         );
         
@@ -446,13 +446,13 @@ fun test_e2e_multi_backer_loans() {
             &tide,
             &capital_vault,
             pass,
-            50 * ONE_SUI,
+            40 * ONE_SUI, // 40% LTV
             ts::ctx(&mut scenario),
         );
         
         // Should have 2 active loans now
         assert!(loan_vault::active_loans(&vault) == 2, 1);
-        assert!(loan_vault::total_borrowed(&vault) == 100 * ONE_SUI, 2);
+        assert!(loan_vault::total_borrowed(&vault) == 80 * ONE_SUI, 2);
         
         transfer::public_transfer(receipt, backer2);
         transfer::public_transfer(loan_coin, backer2);
@@ -531,13 +531,13 @@ fun test_e2e_secondary_market_then_borrow() {
             &tide,
             &capital_vault,
             pass,
-            50 * ONE_SUI,
+            40 * ONE_SUI, // 40% LTV
             ts::ctx(&mut scenario),
         );
         
         // Loan created successfully
         assert!(loan_vault::active_loans(&vault) == 1, 2);
-        assert!(loan_coin.value() == 49_500_000_000, 3); // 50 - 1% fee
+        assert!(loan_coin.value() == 39_600_000_000, 3); // 40 - 1% fee
         
         transfer::public_transfer(receipt, bob);
         transfer::public_transfer(loan_coin, bob);
@@ -721,7 +721,7 @@ fun test_e2e_liquidation_flow() {
             &tide,
             &capital_vault,
             pass,
-            50 * ONE_SUI, // Max LTV
+            40 * ONE_SUI, // 40% LTV (max)
             ts::ctx(&mut scenario),
         );
         

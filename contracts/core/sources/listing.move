@@ -112,6 +112,9 @@ public fun new(
     revenue_bps: u64,
     ctx: &mut TxContext,
 ): (Listing, CapitalVault, RewardVault, StakingAdapter, ListingCap, RouteCapability) {
+    // Validate revenue_bps is within valid range (0-10000)
+    assert!(revenue_bps <= 10000, errors::invalid_bps());
+    
     // Create config with fee and limit disclosure
     let config = ListingConfig {
         issuer,

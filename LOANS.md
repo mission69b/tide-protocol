@@ -8,7 +8,7 @@ Self-Paying Loans is Tide Protocol's DeFi expansion that allows SupporterPass ho
 
 A lending protocol where:
 1. User deposits SupporterPass as collateral
-2. User receives SUI loan (up to 50% LTV)
+2. User receives SUI loan (up to 40% LTV)
 3. Pass rewards automatically repay the loan
 4. When fully repaid, user gets pass back
 
@@ -25,7 +25,7 @@ A lending protocol where:
 ### Borrow Against Your Pass
 
 ```bash
-# 1. Borrow 50 SUI against your SupporterPass
+# 1. Borrow 40 SUI against your SupporterPass (40% LTV on 100 SUI deposit)
 sui client call \
   --package $LOANS_PKG \
   --module loan_vault \
@@ -87,7 +87,7 @@ sui client call \
 
 | Parameter | Value | Description |
 |-----------|-------|-------------|
-| **Max LTV** | 50% | Maximum loan-to-value ratio |
+| **Max LTV** | 40% | Maximum loan-to-value ratio (conservative for v1) |
 | **Liquidation Threshold** | 75% | Trigger point for liquidation |
 | **Min Loan** | 1 SUI | Minimum loan amount |
 | **Insurance Fund** | 20% | Portion of fees allocated to insurance |
@@ -137,7 +137,7 @@ contracts/loans/
 ```
 DAY 0: Alice borrows
 ├── Deposits SupporterPass (100 SUI collateral)
-├── Borrows 50 SUI
+├── Borrows 40 SUI (40% LTV)
 ├── Pays 0.5 SUI origination fee
 └── Receives 49.5 SUI + LoanReceipt
 
@@ -229,7 +229,7 @@ Example:
 
 ### Protection Mechanisms
 
-- **Conservative LTV (50%)**: Large buffer before liquidation
+- **Conservative LTV (40%)**: Large buffer before liquidation
 - **Insurance Fund (20%)**: Portion of fees covers losses
 - **No Oracle Dependency**: Uses original deposit value for collateral
 - **Permissionless Liquidation**: Anyone can trigger to keep system healthy

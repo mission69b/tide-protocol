@@ -4,7 +4,7 @@
 /// Rewards automatically repay the loan via keeper-called harvests.
 /// 
 /// Key Features:
-/// - Borrow up to 50% LTV against SupporterPass
+/// - Borrow up to 40% LTV against SupporterPass (conservative for v1)
 /// - Self-paying: rewards auto-repay the loan
 /// - Conservative parameters protect treasury
 /// - Insurance fund for black swan events
@@ -59,7 +59,7 @@ const MS_PER_YEAR: u64 = 365 * 24 * 60 * 60 * 1000;
 
 // === Default Parameters ===
 
-const DEFAULT_MAX_LTV_BPS: u64 = 5000;              // 50%
+const DEFAULT_MAX_LTV_BPS: u64 = 4000;              // 40% (conservative for v1)
 const DEFAULT_LIQUIDATION_THRESHOLD_BPS: u64 = 7500; // 75%
 const DEFAULT_INTEREST_RATE_BPS: u64 = 500;         // 5% APR
 const DEFAULT_ORIGINATION_FEE_BPS: u64 = 100;       // 1%
