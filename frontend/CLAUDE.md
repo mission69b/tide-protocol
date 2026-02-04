@@ -190,7 +190,7 @@ import {
 
 - Raise fee: 100 (1%)
 - Marketplace fee: 500 (5%)
-- Max LTV: 5000 (50%)
+- Max LTV: 4000 (40%)
 - Interest rate: 500 (5% APR)
 
 ---

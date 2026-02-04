@@ -510,19 +510,11 @@ tide-protocol/
 │
 ├── spec/
 │   ├── tide-core-v1.md          # Locked specification
-│   ├── marketplace-v1.md        # Marketplace specification (current)
-│   ├── marketplace-v2.md        # Marketplace bid system (deferred)
-│   ├── self-paying-loans-v2.md  # Self-paying loans design (v2)
-│   ├── deepbook-integration-v1.md # DeepBook integration (deferred)
+│   ├── marketplace-v1.md        # Marketplace specification
+│   ├── self-paying-loans-v2.md  # Self-paying loans design
 │   ├── frontend-spec.md         # Frontend/API specification
-│   └── invariants.md            # Audit-ready invariant list
-│
-├── scripts/
-│   ├── package.json
-│   └── src/
-│       ├── deploy_devnet.ts
-│       ├── deploy_testnet.ts
-│       └── deploy_mainnet.ts
+│   ├── invariants.md            # Audit-ready invariant list
+│   └── legal.md                 # Legal considerations
 │
 └── LICENSE
 ```
@@ -588,10 +580,6 @@ DeepBook integration is **deferred** until the protocol reaches scale.
 - Treasury 50%+ utilized consistently
 - 3+ issuers onboarded
 - User demand for dynamic rates
-
-See [spec/deepbook-integration-v1.md](./spec/deepbook-integration-v1.md) for the specification (when ready).
-
-**Note:** Phase 3 has sub-phases: 3A (flash + keep), 3B (marketplace bid system), 3C (flash + sell).
 
 ## Protocol Integrations
 

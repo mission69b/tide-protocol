@@ -263,11 +263,8 @@ DeepBook integration is **deferred** until the protocol reaches scale:
 - 3+ issuers onboarded
 - User demand for dynamic rates
 
-See [spec/deepbook-integration-v1.md](./spec/deepbook-integration-v1.md) for the full specification (when ready to implement).
-
 ## Related Documentation
 
 - [Main README](./README.md) - Protocol overview
 - [Self-Paying Loans Spec](./spec/self-paying-loans-v2.md) - Full technical specification
-- [DeepBook Integration Spec](./spec/deepbook-integration-v1.md) - Flash loans & dynamic rates (planned)
 - [Tide Core v1 Spec](./spec/tide-core-v1.md) - Core protocol specification

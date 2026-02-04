@@ -860,15 +860,12 @@ DeepBook integration is deferred until the protocol reaches scale.
 **When to revisit:**
 - Treasury 50%+ utilized
 - 3+ issuers onboarded
-
-See [spec/deepbook-integration-v1.md](./spec/deepbook-integration-v1.md) for the full specification.
-- See: `spec/deepbook-integration-v1.md`
+- User demand for advanced features
 
 ### Future: Marketplace Bid System (Planned)
 - Buy orders with escrowed funds
 - Instant sell to best bid
 - Capital-free flash liquidations
-- See: `spec/marketplace-v2.md`
 
 ### Core Enhancements ✅
 - SupporterPass provenance fields (`pass_number`, `original_backer`, `total_claimed`)

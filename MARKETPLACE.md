@@ -341,13 +341,10 @@ A bid system was considered to enable:
 - **Instant Sell** - Sellers match against best bid
 - **Flash Liquidations** - Capital-free liquidations via DeepBook
 
-**Status:** ⏸️ **DEFERRED** — Flash Liquidate + Keep provides 90% of value without requiring a bid system.
-
-See [spec/marketplace-v2.md](./spec/marketplace-v2.md) for the specification (when revisiting).
+**Status:** ⏸️ **DEFERRED** — Current fixed-price marketplace covers core needs for v1.
 
 ## Related Documentation
 
 - [spec/marketplace-v1.md](./spec/marketplace-v1.md) - Full technical specification (current)
-- [spec/marketplace-v2.md](./spec/marketplace-v2.md) - Bid system specification (deferred)
 - [README.md](./README.md) - Protocol overview
 - [ADAPTERS.md](./ADAPTERS.md) - Revenue adapter integration

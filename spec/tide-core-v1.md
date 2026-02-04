@@ -624,19 +624,16 @@ tide-protocol/
 │
 ├── spec/
 │   ├── tide-core-v1.md               # This specification
-│   ├── marketplace-v1.md             # Marketplace specification (current)
-│   ├── marketplace-v2.md             # Bid system specification (planned)
+│   ├── marketplace-v1.md             # Marketplace specification
 │   ├── self-paying-loans-v2.md       # Loans specification
-│   ├── deepbook-integration-v1.md    # DeepBook integration (deferred)
 │   ├── frontend-spec.md              # Frontend/API specification
-│   └── invariants.md                 # Security invariants
+│   ├── invariants.md                 # Security invariants
+│   └── legal.md                      # Legal considerations
 │
-├── deployments/
-│   ├── testnet/
-│   │   └── tide_core.json            # Deployment artifacts
-│   └── mainnet/
-│
-└── scripts/
+└── deployments/
+    ├── testnet/
+    │   └── tide_core.json            # Deployment artifacts
+    └── mainnet/
 ```
 
 **Normative rules:**
@@ -742,7 +739,7 @@ All state transitions emit `StateChanged` for secondary verification.
 
 ### Future Considerations (v2+)
 
-**DeepBook Integration — ⏸️ DEFERRED (see `spec/deepbook-integration-v1.md`):**
+**DeepBook Integration — ⏸️ DEFERRED:**
 
 Deferred until protocol reaches scale (treasury 50%+ utilized, 3+ issuers).
 - Flash loan liquidations
@@ -750,9 +747,9 @@ Deferred until protocol reaches scale (treasury 50%+ utilized, 3+ issuers).
 - DeepBook liquidity
 - DEEP token rewards
 
-**Marketplace v2 — ⏸️ DEFERRED (see `spec/marketplace-v2.md`):**
+**Marketplace Bid System — ⏸️ DEFERRED:**
 
-Deferred until DeepBook integration is needed.
+Deferred until there's user demand.
 - Bid system (buy orders)
 - Instant sell to best bid
 
